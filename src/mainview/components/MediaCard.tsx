@@ -1,6 +1,5 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { rpc } from "@/lib/rpc";
 import { Image as ImageIcon, Film as FilmIcon, Play } from "lucide-react";
 
 export interface MediaItem {
@@ -26,61 +25,14 @@ interface MediaCardProps {
 }
 
 export function MediaCard({ item, drivePath, albumId, onClick }: MediaCardProps) {
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [visible, setVisible] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    if (cardRef.current) {
-      observer.observe(cardRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
-
-    let active = true;
-    const loadThumb = async () => {
-      setLoading(true);
-      try {
-        const res = await rpc.request.getThumbnail({
-          mediaId: item.id,
-          relativePath: item.current_relative_path, // Use current active path of the file
-          drivePath: drivePath,
-          fileHash: item.file_hash,
-        });
-        if (active && res.success && res.url) {
-          setThumbUrl(res.url);
-        }
-      } catch (err) {
-        console.error("Failed to load thumbnail:", err);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    loadThumb();
-    return () => {
-      active = false;
-    };
-  }, [visible, item, drivePath]);
 
   const isVideo = item.mime_type.startsWith("video");
   const fileName =
     item.original_relative_path.split("/").pop() || item.original_relative_path;
+
+  const thumbUrl = `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(item.current_relative_path)}&fileHash=${item.file_hash}`;
 
   return (
     <Link
@@ -93,17 +45,14 @@ export function MediaCard({ item, drivePath, albumId, onClick }: MediaCardProps)
     >
       {/* Media content */}
       <div className="absolute inset-0 flex items-center justify-center bg-slate-950">
-        {thumbUrl ? (
+        {!hasError ? (
           <img
             src={thumbUrl}
             alt={fileName}
+            onError={() => setHasError(true)}
             className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
             loading="lazy"
           />
-        ) : loading ? (
-          <div className="w-full h-full bg-slate-900/60 animate-pulse flex items-center justify-center">
-            <span className="loading loading-spinner loading-sm text-slate-700"></span>
-          </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-slate-700 gap-2">
             {isVideo ? (

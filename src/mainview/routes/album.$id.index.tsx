@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
@@ -14,9 +14,11 @@ import {
   Calendar,
   FolderOpen,
   FolderPlus,
+  RotateCw,
 } from "lucide-react";
 import { LegendList } from "@legendapp/list/react";
 import DialogModal, { ModalHandle } from "@/components/DialogModal";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface AlbumSearch {
   page?: number;
@@ -39,21 +41,120 @@ function AlbumDetailComponent() {
   const { page = 0, limit = 100 } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
 
-  const [album, setAlbum] = useState<{ id: number; name: string; relative_path: string; created_at: string } | null>(null);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [totalItems, setTotalItems] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const albumId = Number(id);
+
+  // Queries
+  const {
+    data: album,
+    isLoading: isAlbumLoading,
+    error: albumError,
+  } = useQuery({
+    queryKey: ["album", selectedDrive?.path, albumId],
+    queryFn: async () => {
+      if (!selectedDrive?.path || isNaN(albumId)) return null;
+      const res = await rpc.request.getAlbum({
+        drivePath: selectedDrive.path,
+        albumId,
+      });
+      if (res.error) throw new Error(res.error);
+      return res.album || null;
+    },
+    enabled: !!selectedDrive?.path && !isNaN(albumId),
+  });
+
+  const {
+    data: mediaData = { items: [], total: 0 },
+    isLoading: isMediaLoading,
+    error: mediaError,
+  } = useQuery({
+    queryKey: ["album-media", selectedDrive?.path, albumId, page, limit],
+    queryFn: async () => {
+      if (!selectedDrive?.path || isNaN(albumId))
+        return { items: [], total: 0 };
+      const res = await rpc.request.getAlbumMedia({
+        drivePath: selectedDrive.path,
+        albumId,
+        limit,
+        offset: page * limit,
+      });
+      if (res.error) throw new Error(res.error);
+      return {
+        items: (res.items as MediaItem[]) || [],
+        total: res.total || 0,
+      };
+    },
+    enabled: !!selectedDrive?.path && !isNaN(albumId),
+  });
+
+  const { data: albums = [] } = useQuery({
+    queryKey: ["albums", selectedDrive?.path],
+    queryFn: async () => {
+      if (!selectedDrive?.path) return [];
+      const res = await rpc.request.getAlbums({
+        drivePath: selectedDrive.path,
+      });
+      if (res.error) throw new Error(res.error);
+      return res.albums || [];
+    },
+    enabled: !!selectedDrive?.path,
+  });
 
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
-  const [albums, setAlbums] = useState<any[]>([]);
   const [targetAlbumId, setTargetAlbumId] = useState<number | null>(null);
-  const [moving, setMoving] = useState(false);
+  const [albumSearchQuery, setAlbumSearchQuery] = useState("");
   const modalRef = useRef<ModalHandle>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const albumId = Number(id);
+  const mediaItems = mediaData.items;
+  const totalItems = mediaData.total;
+  const loading = isAlbumLoading || isMediaLoading;
+  const error = albumError?.message || mediaError?.message || null;
+
+  const filteredAlbums = (albums || []).filter((alb: any) =>
+    alb.name.toLowerCase().includes(albumSearchQuery.toLowerCase()),
+  );
+
+  // Mutation
+  const moveItemsMutation = useMutation({
+    mutationFn: async ({
+      mediaIds,
+      targetAlbumId,
+    }: {
+      mediaIds: number[];
+      targetAlbumId: number;
+    }) => {
+      if (!selectedDrive?.path) throw new Error("No drive selected");
+      const res = await rpc.request.moveMediaItemsToAlbum({
+        drivePath: selectedDrive.path,
+        mediaIds,
+        targetAlbumId,
+      });
+      if (!res.success) throw new Error(res.error || "Failed to move items");
+      return res;
+    },
+    onSuccess: () => {
+      modalRef.current?.close();
+      setSelectedItems(new Set());
+      setIsSelecting(false);
+      setTargetAlbumId(null);
+      setAlbumSearchQuery("");
+      // Invalidate queries to trigger background updates
+      queryClient.invalidateQueries({
+        queryKey: ["album", selectedDrive?.path, albumId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["album-media", selectedDrive?.path, albumId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["albums", selectedDrive?.path],
+      });
+    },
+    onError: (err: any) => {
+      console.error(err);
+      alert(`Error moving items: ${err.message}`);
+    },
+  });
 
   const setPage = (newPage: number) => {
     navigate({ search: (prev) => ({ ...prev, page: newPage }) });
@@ -75,104 +176,34 @@ function AlbumDetailComponent() {
     });
   };
 
-  const handleOpenMoveModal = async () => {
+  const handleOpenMoveModal = () => {
     if (!selectedDrive?.path) return;
-    try {
-      const res = await rpc.request.getAlbums({ drivePath: selectedDrive.path });
-      if (res.albums && !res.error) {
-        setAlbums(res.albums);
-      }
-      modalRef.current?.open();
-    } catch (err) {
-      console.error("Failed to fetch albums for selection:", err);
-    }
+    modalRef.current?.open();
   };
 
-  const handleMoveItems = async () => {
-    if (!selectedDrive?.path || selectedItems.size === 0 || !targetAlbumId) return;
-    setMoving(true);
-    try {
-      const res = await rpc.request.moveMediaItemsToAlbum({
-        drivePath: selectedDrive.path,
-        mediaIds: Array.from(selectedItems),
-        targetAlbumId,
-      });
-      if (res.success) {
-        modalRef.current?.close();
-        setSelectedItems(new Set());
-        setIsSelecting(false);
-        setTargetAlbumId(null);
-        setRefreshTrigger((prev) => prev + 1);
-      } else {
-        alert(`Failed to move: ${res.error}`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert(`Error moving items: ${err.message}`);
-    } finally {
-      setMoving(false);
-    }
+  const handleMoveItems = () => {
+    if (!selectedDrive?.path || selectedItems.size === 0 || !targetAlbumId)
+      return;
+    moveItemsMutation.mutate({
+      mediaIds: Array.from(selectedItems),
+      targetAlbumId,
+    });
   };
 
-  useEffect(() => {
-    if (!selectedDrive?.path || isNaN(albumId)) return;
-    
-    let active = true;
-    const fetchAlbumData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const albumRes = await rpc.request.getAlbum({
-          drivePath: selectedDrive.path,
-          albumId,
-        });
-
-        if (albumRes.error) {
-          if (active) setError(albumRes.error);
-          return;
-        }
-
-        if (albumRes.album) {
-          if (active) setAlbum(albumRes.album);
-
-          const mediaRes = await rpc.request.getAlbumMedia({
-            drivePath: selectedDrive.path,
-            albumId,
-            limit: limit,
-            offset: page * limit,
-          });
-
-          if (active) {
-            if (mediaRes.error) {
-              setError(mediaRes.error);
-            } else {
-              setMediaItems(mediaRes.items as MediaItem[]);
-              setTotalItems(mediaRes.total);
-            }
-          }
-        } else {
-          if (active) setError("Album details not found.");
-        }
-      } catch (err: any) {
-        console.error("Failed to load album media details:", err);
-        if (active) setError(err.message || "Failed to load album data");
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    fetchAlbumData();
-
-    return () => {
-      active = false;
-    };
-  }, [selectedDrive?.path, albumId, page, limit, refreshTrigger]);
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({
+      queryKey: ["album", selectedDrive?.path, albumId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["album-media", selectedDrive?.path, albumId],
+    });
+  };
 
   // Case 1: No drive is selected
   if (!selectedDrive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           <Compass className="w-10 h-10 text-slate-500 group-hover:text-primary transition-colors duration-300" />
         </div>
@@ -180,9 +211,10 @@ function AlbumDetailComponent() {
           No Drive Selected
         </h3>
         <p className="text-slate-400 text-sm max-w-sm leading-relaxed mb-6">
-          Please select a connected drive or storage volume from the sidebar to inspect cataloged albums.
+          Please select a connected drive or storage volume from the sidebar to
+          inspect cataloged albums.
         </p>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
           <Info className="w-3.5 h-3.5" />
           Select a drive then scan it under the Discover tab.
         </div>
@@ -194,7 +226,7 @@ function AlbumDetailComponent() {
   if (selectedDrive.status === "unmounted") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 to-transparent opacity-100 transition-opacity duration-300"></div>
           <HardDrive className="w-10 h-10 text-slate-500 group-hover:text-amber-400 transition-colors duration-300 animate-pulse" />
         </div>
@@ -202,7 +234,8 @@ function AlbumDetailComponent() {
           {selectedDrive.name} is Unmounted
         </h3>
         <p className="text-slate-400 text-sm max-w-sm leading-relaxed mb-6">
-          This storage device needs to be mounted before you can view its albums.
+          This storage device needs to be mounted before you can view its
+          albums.
         </p>
         <button
           onClick={async () => {
@@ -244,7 +277,7 @@ function AlbumDetailComponent() {
             <ChevronLeft className="w-3.5 h-3.5" /> Back
           </button>
         </div>
-        <div className="p-12 text-center rounded-2xl bg-slate-900/20 border border-slate-900/50">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
           <Info className="w-12 h-12 text-error mx-auto mb-4" />
           <h3 className="text-white font-bold">Error Loading Album</h3>
           <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">
@@ -294,26 +327,32 @@ function AlbumDetailComponent() {
           </div>
           <div>
             <h2 className="text-xl font-black text-white leading-tight">
-              {album?.name === "unknown" ? "Unsorted Media" : (album?.name || "Loading Album...")}
+              {album?.name === "unknown"
+                ? "Unsorted Media"
+                : album?.name || "Loading Album..."}
             </h2>
             <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider block mt-0.5">
               {album?.relative_path} · {totalItems} items
             </span>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-3 ml-auto md:ml-0">
           {album && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[10px] text-slate-400 font-mono">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-slate-800 text-[10px] text-slate-400 font-mono">
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              <span>Indexed: {new Date(album.created_at).toLocaleDateString()}</span>
+              <span>
+                Indexed: {new Date(album.created_at).toLocaleDateString()}
+              </span>
             </div>
           )}
-          
+
           {isSelecting && mediaItems.length > 0 && (
             <button
               onClick={() => {
-                const allVisibleSelected = mediaItems.every((item) => selectedItems.has(item.id));
+                const allVisibleSelected = mediaItems.every((item) =>
+                  selectedItems.has(item.id),
+                );
                 if (allVisibleSelected) {
                   setSelectedItems((prev) => {
                     const next = new Set(prev);
@@ -328,9 +367,11 @@ function AlbumDetailComponent() {
                   });
                 }
               }}
-              className="btn btn-sm btn-outline border-slate-800 text-slate-300 font-bold hover:bg-slate-900 cursor-pointer"
+              className="btn btn-sm btn-outline border-slate-800 text-slate-300 font-bold hover:bg-base-100 cursor-pointer"
             >
-              {mediaItems.every((item) => selectedItems.has(item.id)) ? "Deselect All" : "Select All"}
+              {mediaItems.every((item) => selectedItems.has(item.id))
+                ? "Deselect All"
+                : "Select All"}
             </button>
           )}
 
@@ -340,7 +381,9 @@ function AlbumDetailComponent() {
               setSelectedItems(new Set());
             }}
             className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
-              isSelecting ? "btn-secondary text-white" : "btn-outline border-slate-800 text-slate-300"
+              isSelecting
+                ? "btn-secondary text-white"
+                : "btn-outline border-slate-800 text-slate-300"
             }`}
           >
             {isSelecting ? "Cancel" : "Select Items"}
@@ -349,19 +392,34 @@ function AlbumDetailComponent() {
       </div>
 
       {/* Control Bar */}
-      <div className="flex justify-end items-center gap-2 bg-slate-950/50 border border-slate-900 px-4 py-2.5 rounded-xl shadow-md">
-        <span className="text-xs text-slate-400 font-medium">Items per page:</span>
-        <select
-          value={limit}
-          onChange={(e) => handleLimitChange(Number(e.target.value))}
-          className="select select-bordered select-xs text-xs rounded-lg bg-slate-900/60 border-slate-800 text-slate-300 focus:outline-none focus:border-primary/60 cursor-pointer"
+      <div className="flex justify-between items-center gap-2 bg-slate-950/50 border border-slate-900 px-4 py-2.5 rounded-xl shadow-md">
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="btn btn-xs btn-outline border-slate-800 text-slate-300 gap-1.5 font-bold hover:bg-base-100 cursor-pointer"
         >
-          {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map((val) => (
-            <option key={val} value={val}>
-              {val}
-            </option>
-          ))}
-        </select>
+          <RotateCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400 font-medium">
+            Items per page:
+          </span>
+          <select
+            value={limit}
+            onChange={(e) => handleLimitChange(Number(e.target.value))}
+            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-slate-800 text-slate-300 focus:outline-none focus:border-primary/60 cursor-pointer"
+          >
+            {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map(
+              (val) => (
+                <option key={val} value={val}>
+                  {val}
+                </option>
+              ),
+            )}
+          </select>
+        </div>
       </div>
 
       {/* Media Grid */}
@@ -373,7 +431,7 @@ function AlbumDetailComponent() {
           </p>
         </div>
       ) : mediaItems.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-slate-900/20 border border-slate-900/50">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
           <ImageIcon className="w-12 h-12 text-slate-700 mx-auto mb-4" />
           <h3 className="text-white font-bold">No Items Found</h3>
           <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">
@@ -395,7 +453,7 @@ function AlbumDetailComponent() {
                         type="checkbox"
                         checked={selectedItems.has(item.id)}
                         onChange={() => toggleItemSelection(item.id)}
-                        className="checkbox checkbox-primary bg-slate-950/80 border-slate-700 checkbox-sm cursor-pointer shadow-md"
+                        className="checkbox checkbox-primary border-2 border-slate-400 checked:border-primary bg-slate-950/90 checkbox-sm cursor-pointer shadow-lg transition-all"
                       />
                     </div>
                   )}
@@ -416,8 +474,7 @@ function AlbumDetailComponent() {
               {rowItems.length < 4 &&
                 Array.from({ length: 4 - rowItems.length }).map((_, idx) => (
                   <div key={`empty-${idx}`} className="hidden md:block"></div>
-                ))
-              }
+                ))}
             </div>
           )}
         />
@@ -462,36 +519,59 @@ function AlbumDetailComponent() {
         actions={
           <>
             <button
-              onClick={() => modalRef.current?.close()}
+              onClick={() => {
+                setAlbumSearchQuery("");
+                modalRef.current?.close();
+              }}
               className="btn btn-sm btn-ghost text-slate-400 hover:text-white"
             >
               Cancel
             </button>
             <button
               onClick={handleMoveItems}
-              disabled={moving || !targetAlbumId}
+              disabled={moveItemsMutation.isPending || !targetAlbumId}
               className="btn btn-sm btn-primary font-bold shadow-lg shadow-primary/25"
             >
-              {moving ? "Moving..." : "Move Items"}
+              {moveItemsMutation.isPending ? "Moving..." : "Move Items"}
             </button>
           </>
         }
       >
         <div className="space-y-4">
           <p className="text-slate-400 text-xs leading-relaxed">
-            Choose the target album to move the <span className="text-white font-bold">{selectedItems.size}</span> selected media files to.
-            This will physically move the files on disk and update their active catalog paths.
+            Choose the target album to move the{" "}
+            <span className="text-white font-bold">{selectedItems.size}</span>{" "}
+            selected media files to. This will physically move the files on disk
+            and update their active catalog paths.
           </p>
 
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search albums..."
+              value={albumSearchQuery}
+              onChange={(e) => setAlbumSearchQuery(e.target.value)}
+              className="input input-bordered input-sm w-full bg-base-100/60 border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary/60 pr-8"
+            />
+            {albumSearchQuery && (
+              <button
+                onClick={() => setAlbumSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
           <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-            {albums.map((alb) => (
+            {filteredAlbums.map((alb: any) => (
               <label
                 key={alb.id}
                 onClick={() => setTargetAlbumId(alb.id)}
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
                   targetAlbumId === alb.id
                     ? "bg-primary/10 border-primary/45 text-white"
-                    : "bg-slate-900/40 border-slate-800/80 text-slate-300 hover:bg-slate-900"
+                    : "bg-base-100/40 border-slate-800/80 text-slate-300 hover:bg-base-100"
                 }`}
               >
                 <input
@@ -509,8 +589,10 @@ function AlbumDetailComponent() {
                 </span>
               </label>
             ))}
-            {albums.length === 0 && (
-              <p className="text-center text-slate-500 text-xs py-4">No albums available.</p>
+            {filteredAlbums.length === 0 && (
+              <p className="text-center text-slate-500 text-xs py-4">
+                No matching albums found.
+              </p>
             )}
           </div>
         </div>

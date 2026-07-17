@@ -40,20 +40,20 @@ function MediasComponent() {
   const navigate = useNavigate({ from: Route.fullPath });
   const itemsPerPage = 24;
 
-  const { mediaItems, totalItems, loading, scanStatus, refresh } = useMediaCatalog(
-    selectedDrive?.path,
-    page,
-    itemsPerPage,
-    search,
-    filter,
-  );
+  const { mediaItems, totalItems, loading, scanStatus, refresh } =
+    useMediaCatalog(selectedDrive?.path, page, itemsPerPage, search, filter);
 
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [albums, setAlbums] = useState<any[]>([]);
   const [targetAlbumId, setTargetAlbumId] = useState<number | null>(null);
+  const [albumSearchQuery, setAlbumSearchQuery] = useState("");
   const [moving, setMoving] = useState(false);
   const modalRef = useRef<ModalHandle>(null);
+
+  const filteredAlbums = (albums || []).filter((alb: any) =>
+    alb.name.toLowerCase().includes(albumSearchQuery.toLowerCase()),
+  );
 
   const toggleItemSelection = (id: number) => {
     setSelectedItems((prev) => {
@@ -70,7 +70,9 @@ function MediasComponent() {
   const handleOpenMoveModal = async () => {
     if (!selectedDrive?.path) return;
     try {
-      const res = await rpc.request.getAlbums({ drivePath: selectedDrive.path });
+      const res = await rpc.request.getAlbums({
+        drivePath: selectedDrive.path,
+      });
       if (res.albums && !res.error) {
         setAlbums(res.albums);
       }
@@ -81,7 +83,8 @@ function MediasComponent() {
   };
 
   const handleMoveItems = async () => {
-    if (!selectedDrive?.path || selectedItems.size === 0 || !targetAlbumId) return;
+    if (!selectedDrive?.path || selectedItems.size === 0 || !targetAlbumId)
+      return;
     setMoving(true);
     try {
       const res = await rpc.request.moveMediaItemsToAlbum({
@@ -94,6 +97,7 @@ function MediasComponent() {
         setSelectedItems(new Set());
         setIsSelecting(false);
         setTargetAlbumId(null);
+        setAlbumSearchQuery("");
         refresh();
       } else {
         alert(`Failed to move: ${res.error}`);
@@ -136,7 +140,7 @@ function MediasComponent() {
   if (!selectedDrive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           <Compass className="w-10 h-10 text-slate-500 group-hover:text-primary transition-colors duration-300" />
         </div>
@@ -147,7 +151,7 @@ function MediasComponent() {
           Please select a connected drive or storage volume from the sidebar to
           inspect cataloged media files.
         </p>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
           <Info className="w-3.5 h-3.5" />
           Select a drive then scan it under the Discover tab.
         </div>
@@ -159,7 +163,7 @@ function MediasComponent() {
   if (selectedDrive.status === "unmounted") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 to-transparent opacity-100 transition-opacity duration-300"></div>
           <HardDrive className="w-10 h-10 text-slate-500 group-hover:text-amber-400 transition-colors duration-300 animate-pulse" />
         </div>
@@ -225,11 +229,13 @@ function MediasComponent() {
               </div>
             </div>
           )}
-          
+
           {isSelecting && mediaItems.length > 0 && (
             <button
               onClick={() => {
-                const allVisibleSelected = mediaItems.every((item) => selectedItems.has(item.id));
+                const allVisibleSelected = mediaItems.every((item) =>
+                  selectedItems.has(item.id),
+                );
                 if (allVisibleSelected) {
                   setSelectedItems((prev) => {
                     const next = new Set(prev);
@@ -244,9 +250,11 @@ function MediasComponent() {
                   });
                 }
               }}
-              className="btn btn-sm btn-outline border-slate-800 text-slate-300 font-bold hover:bg-slate-900 cursor-pointer"
+              className="btn btn-sm btn-outline border-slate-800 text-slate-300 font-bold hover:bg-base-100 cursor-pointer"
             >
-              {mediaItems.every((item) => selectedItems.has(item.id)) ? "Deselect All" : "Select All"}
+              {mediaItems.every((item) => selectedItems.has(item.id))
+                ? "Deselect All"
+                : "Select All"}
             </button>
           )}
 
@@ -256,7 +264,9 @@ function MediasComponent() {
               setSelectedItems(new Set());
             }}
             className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
-              isSelecting ? "btn-secondary text-white" : "btn-outline border-slate-800 text-slate-300"
+              isSelecting
+                ? "btn-secondary text-white"
+                : "btn-outline border-slate-800 text-slate-300"
             }`}
           >
             {isSelecting ? "Cancel" : "Select Items"}
@@ -281,7 +291,7 @@ function MediasComponent() {
           </p>
         </div>
       ) : mediaItems.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-slate-900/20 border border-slate-900/50">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
           <ImageIcon className="w-12 h-12 text-slate-700 mx-auto mb-4" />
           <h3 className="text-white font-bold">No Media Found</h3>
           <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">
@@ -304,7 +314,7 @@ function MediasComponent() {
                         type="checkbox"
                         checked={selectedItems.has(item.id)}
                         onChange={() => toggleItemSelection(item.id)}
-                        className="checkbox checkbox-primary bg-slate-950/80 border-slate-700 checkbox-sm cursor-pointer shadow-md"
+                        className="checkbox checkbox-primary border-2 border-slate-400 checked:border-primary bg-slate-950/90 checkbox-sm cursor-pointer shadow-lg transition-all"
                       />
                     </div>
                   )}
@@ -324,8 +334,7 @@ function MediasComponent() {
               {rowItems.length < 4 &&
                 Array.from({ length: 4 - rowItems.length }).map((_, idx) => (
                   <div key={`empty-${idx}`} className="hidden md:block"></div>
-                ))
-              }
+                ))}
             </div>
           )}
         />
@@ -370,7 +379,10 @@ function MediasComponent() {
         actions={
           <>
             <button
-              onClick={() => modalRef.current?.close()}
+              onClick={() => {
+                setAlbumSearchQuery("");
+                modalRef.current?.close();
+              }}
               className="btn btn-sm btn-ghost text-slate-400 hover:text-white"
             >
               Cancel
@@ -387,19 +399,39 @@ function MediasComponent() {
       >
         <div className="space-y-4">
           <p className="text-slate-400 text-xs leading-relaxed">
-            Choose the target album to move the <span className="text-white font-bold">{selectedItems.size}</span> selected media files to.
-            This will physically move the files on disk and update their active catalog paths.
+            Choose the target album to move the{" "}
+            <span className="text-white font-bold">{selectedItems.size}</span>{" "}
+            selected media files to. This will physically move the files on disk
+            and update their active catalog paths.
           </p>
 
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search albums..."
+              value={albumSearchQuery}
+              onChange={(e) => setAlbumSearchQuery(e.target.value)}
+              className="input input-bordered input-sm w-full bg-base-100/60 border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary/60 pr-8"
+            />
+            {albumSearchQuery && (
+              <button
+                onClick={() => setAlbumSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
           <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-            {albums.map((alb) => (
+            {filteredAlbums.map((alb: any) => (
               <label
                 key={alb.id}
                 onClick={() => setTargetAlbumId(alb.id)}
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
                   targetAlbumId === alb.id
                     ? "bg-primary/10 border-primary/45 text-white"
-                    : "bg-slate-900/40 border-slate-800/80 text-slate-300 hover:bg-slate-900"
+                    : "bg-base-100/40 border-slate-800/80 text-slate-300 hover:bg-base-100"
                 }`}
               >
                 <input
@@ -417,8 +449,10 @@ function MediasComponent() {
                 </span>
               </label>
             ))}
-            {albums.length === 0 && (
-              <p className="text-center text-slate-500 text-xs py-4">No albums available.</p>
+            {filteredAlbums.length === 0 && (
+              <p className="text-center text-slate-500 text-xs py-4">
+                No matching albums found.
+              </p>
             )}
           </div>
         </div>

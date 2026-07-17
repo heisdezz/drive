@@ -120,9 +120,17 @@ function ItemViewerComponent() {
         return;
       }
       if (e.key === "ArrowLeft" && prevId) {
-        navigate({ to: "/item/$id", params: { id: String(prevId) }, search: { albumId } });
+        navigate({
+          to: "/item/$id",
+          params: { id: String(prevId) },
+          search: { albumId },
+        });
       } else if (e.key === "ArrowRight" && nextId) {
-        navigate({ to: "/item/$id", params: { id: String(nextId) }, search: { albumId } });
+        navigate({
+          to: "/item/$id",
+          params: { id: String(nextId) },
+          search: { albumId },
+        });
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -258,7 +266,9 @@ function ItemViewerComponent() {
         >
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
-        <span className={`text-xs text-slate-500 font-mono truncate max-w-xs md:max-w-md transition-opacity duration-300 ${loading ? 'opacity-40' : 'opacity-100'}`}>
+        <span
+          className={`text-xs text-slate-500 font-mono truncate max-w-xs md:max-w-md transition-opacity duration-300 ${loading ? "opacity-40" : "opacity-100"}`}
+        >
           {fileName}
         </span>
       </div>
@@ -273,7 +283,7 @@ function ItemViewerComponent() {
               to="/item/$id"
               params={{ id: String(prevId) }}
               search={{ albumId }}
-              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-slate-950/70 hover:bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-slate-950/70 hover:bg-base-100 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
               title="Previous item (Left Arrow)"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -286,7 +296,7 @@ function ItemViewerComponent() {
               to="/item/$id"
               params={{ id: String(nextId) }}
               search={{ albumId }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-slate-950/70 hover:bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-slate-950/70 hover:bg-base-100 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
               title="Next item (Right Arrow)"
             >
               <ChevronRight className="w-5 h-5" />
@@ -335,13 +345,17 @@ function ItemViewerComponent() {
           {loading && (
             <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[2px] flex flex-col items-center justify-center z-20 transition-all duration-300">
               <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
-              <p className="text-slate-400 text-xs font-bold">Loading media details...</p>
+              <p className="text-slate-400 text-xs font-bold">
+                Loading media details...
+              </p>
             </div>
           )}
         </div>
 
         {/* Right Column: Metadata Details Panel (1/3 width) */}
-        <div className={`p-6 rounded-2xl bg-gradient-to-br from-slate-900/60 to-slate-950/40 border border-slate-900 shadow-xl space-y-6 transition-all duration-300 ${loading ? 'opacity-40 pointer-events-none filter blur-[0.5px]' : 'opacity-100'}`}>
+        <div
+          className={`p-6 rounded-2xl bg-gradient-to-br from-slate-900/60 to-slate-950/40 border border-slate-900 shadow-xl space-y-6 transition-all duration-300 ${loading ? "opacity-40 pointer-events-none filter blur-[0.5px]" : "opacity-100"}`}
+        >
           <div>
             <h3
               className="text-base font-black text-white leading-tight mb-1 truncate"
@@ -395,7 +409,9 @@ function ItemViewerComponent() {
                     params={{ id: String(item.album_id) }}
                     className="text-primary hover:underline font-bold text-xs block truncate"
                   >
-                    {item.album_name === "unknown" ? "Unsorted Media" : (item.album_name || "Unknown Album")}
+                    {item.album_name === "unknown"
+                      ? "Unsorted Media"
+                      : item.album_name || "Unknown Album"}
                   </Link>
                 </div>
               </div>
@@ -470,19 +486,20 @@ function ItemViewerComponent() {
             </div>
 
             {/* Video Duration */}
-            {item.duration_seconds !== null && item.duration_seconds !== undefined && (
-              <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
-                <Clock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                <div>
-                  <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                    Duration
-                  </span>
-                  <span className="text-white text-xs">
-                    {formatDuration(item.duration_seconds)}
-                  </span>
+            {item.duration_seconds !== null &&
+              item.duration_seconds !== undefined && (
+                <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+                  <Clock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                      Duration
+                    </span>
+                    <span className="text-white text-xs">
+                      {formatDuration(item.duration_seconds)}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Embedded Metadata JSON */}
             {(() => {
@@ -502,10 +519,17 @@ function ItemViewerComponent() {
                     Embedded Metadata
                   </h4>
                   {keys.map((key) => (
-                    <div key={key} className="flex justify-between items-start gap-2 border-b border-slate-900/50 pb-1.5 last:border-0 last:pb-0">
-                      <span className="text-slate-500 font-mono text-[10px]">{key}</span>
+                    <div
+                      key={key}
+                      className="flex justify-between items-start gap-2 border-b border-slate-900/50 pb-1.5 last:border-0 last:pb-0"
+                    >
+                      <span className="text-slate-500 font-mono text-[10px]">
+                        {key}
+                      </span>
                       <span className="text-white font-mono text-[10px] break-all select-all text-right">
-                        {typeof extraMeta[key] === "object" ? JSON.stringify(extraMeta[key]) : String(extraMeta[key])}
+                        {typeof extraMeta[key] === "object"
+                          ? JSON.stringify(extraMeta[key])
+                          : String(extraMeta[key])}
                       </span>
                     </div>
                   ))}
@@ -533,23 +557,28 @@ function ItemViewerComponent() {
           </h3>
           {relatedLoading ? (
             <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin" />
-          ) : related.length > 0 && (
-            <span className="badge badge-sm badge-outline border-slate-800 text-slate-500 font-bold">
-              {related.length}
-            </span>
+          ) : (
+            related.length > 0 && (
+              <span className="badge badge-sm badge-outline border-slate-800 text-slate-500 font-bold">
+                {related.length}
+              </span>
+            )
           )}
         </div>
 
         {relatedLoading && related.length === 0 ? (
           <div className="flex items-center gap-2 text-slate-500 text-xs py-8">
-            <Loader2 className="w-4 h-4 animate-spin" /> Finding related media...
+            <Loader2 className="w-4 h-4 animate-spin" /> Finding related
+            media...
           </div>
         ) : related.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-slate-900/20 border border-slate-900/50 text-slate-600 text-xs">
+          <div className="p-8 text-center rounded-2xl bg-base-100/20 border border-slate-900/50 text-slate-600 text-xs">
             No related media found in this folder.
           </div>
         ) : (
-          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity duration-300 ${relatedLoading ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
+          <div
+            className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity duration-300 ${relatedLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}
+          >
             {related.map((r) => (
               <MediaCard key={r.id} item={r} drivePath={selectedDrive.path} />
             ))}

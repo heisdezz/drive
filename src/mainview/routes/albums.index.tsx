@@ -44,51 +44,21 @@ interface AlbumCoverProps {
 }
 
 function AlbumCover({ previewItem, drivePath, albumName }: AlbumCoverProps) {
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
-  useEffect(() => {
-    if (!previewItem) return;
-    let active = true;
-    const loadThumb = async () => {
-      setLoading(true);
-      try {
-        const res = await rpc.request.getThumbnail({
-          mediaId: previewItem.id,
-          relativePath: previewItem.current_relative_path,
-          drivePath: drivePath,
-          fileHash: previewItem.file_hash,
-        });
-        if (active && res.success && res.url) {
-          setThumbUrl(res.url);
-        }
-      } catch (err) {
-        console.error("Failed to load album cover thumbnail:", err);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    loadThumb();
-    return () => {
-      active = false;
-    };
-  }, [previewItem, drivePath]);
+  const displayName = albumName === "unknown" ? "Unsorted Media" : albumName;
+  const thumbUrl = previewItem
+    ? `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(previewItem.current_relative_path)}&fileHash=${previewItem.file_hash}`
+    : null;
 
-  if (thumbUrl) {
+  if (thumbUrl && !hasError) {
     return (
       <img
         src={thumbUrl}
-        alt={albumName === "unknown" ? "Unsorted Media" : albumName}
+        alt={displayName}
+        onError={() => setHasError(true)}
         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="w-full h-full bg-slate-900/60 animate-pulse flex items-center justify-center">
-        <span className="loading loading-spinner loading-sm text-slate-700"></span>
-      </div>
     );
   }
 
@@ -131,7 +101,7 @@ function AlbumsIndexComponent() {
   if (!selectedDrive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           <Compass className="w-10 h-10 text-slate-500 group-hover:text-primary transition-colors duration-300" />
         </div>
@@ -142,7 +112,7 @@ function AlbumsIndexComponent() {
           Please select a connected drive or storage volume from the sidebar to
           inspect cataloged albums.
         </p>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
           <Info className="w-3.5 h-3.5" />
           Select a drive then scan it under the Discover tab.
         </div>
@@ -154,7 +124,7 @@ function AlbumsIndexComponent() {
   if (selectedDrive.status === "unmounted") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 to-transparent opacity-100 transition-opacity duration-300"></div>
           <HardDrive className="w-10 h-10 text-slate-500 group-hover:text-amber-400 transition-colors duration-300 animate-pulse" />
         </div>
@@ -237,7 +207,7 @@ function AlbumsIndexComponent() {
             placeholder="Search albums..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-slate-900/60 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-primary/60 transition-colors"
+            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-base-100/60 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-primary/60 transition-colors"
           />
         </div>
 
@@ -249,7 +219,7 @@ function AlbumsIndexComponent() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="select select-bordered select-xs text-xs rounded-lg bg-slate-900/60 border-slate-800 text-slate-300 focus:outline-none focus:border-primary/60"
+            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-slate-800 text-slate-300 focus:outline-none focus:border-primary/60"
           >
             <option value="name">Name (A-Z)</option>
             <option value="count">File Count</option>
@@ -267,7 +237,7 @@ function AlbumsIndexComponent() {
           </p>
         </div>
       ) : filteredAlbums.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-slate-900/20 border border-slate-900/50">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
           <Library className="w-12 h-12 text-slate-700 mx-auto mb-4" />
           <h3 className="text-white font-bold">No Albums Found</h3>
           <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">

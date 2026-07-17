@@ -37,21 +37,26 @@ const Modal = forwardRef<ModalHandle, ModalProps>(
             <form method="dialog" className="ml-auto">
               <button
                 type="button"
-                className="btn btn-sm btn-circle btn-ghost text-slate-400 hover:text-white hover:bg-slate-900 cursor-pointer flex items-center justify-center"
+                className="btn btn-sm btn-circle btn-ghost text-slate-400 hover:text-white hover:bg-base-100 cursor-pointer flex items-center justify-center"
                 onClick={() => modalRef.current?.close()}
               >
                 <X size={18} />
               </button>
             </form>
           </div>
-          {children && <div className="p-6 overflow-y-auto text-sm">{children}</div>}
+          {children && (
+            <div className="p-6 overflow-y-auto text-sm">{children}</div>
+          )}
           {actions && (
             <div className="flex justify-end gap-2 p-4 bg-slate-950 border-t border-slate-900 sticky bottom-0">
               {actions}
             </div>
           )}
         </div>
-        <form method="dialog" className="modal-backdrop bg-black/60 backdrop-blur-sm">
+        <form
+          method="dialog"
+          className="modal-backdrop bg-black/60 backdrop-blur-sm"
+        >
           <button>close</button>
         </form>
       </dialog>

@@ -302,21 +302,24 @@ function latestValidBackup(dbPath: string): string | null {
 		.reverse();
 	for (const name of snaps) {
 		const candidate = path.join(dir, name);
+		let db: Database | null = null;
 		try {
-			const db = openReadableDb(candidate);
+			db = openReadableDb(candidate);
 			db.prepare("SELECT count(*) FROM media_items").get(); // touch data pages
-			db.close();
 			return candidate;
 		} catch {
 			addLog("warn", `Skipping unreadable backup: ${name}`);
+		} finally {
+			db?.close();
 		}
 	}
 	return null;
 }
 
 function getDatabaseConnection(dbPath: string): Database {
+	let db: Database | null = null;
 	try {
-		const db = openLibraryDb(dbPath);
+		db = openLibraryDb(dbPath);
 		initializeDatabase(db);
 		// Touch actual data pages (not just the schema page) so on-disk
 		// corruption is detected here and can trigger recovery, rather than
@@ -324,6 +327,13 @@ function getDatabaseConnection(dbPath: string): Database {
 		db.prepare("SELECT count(*) FROM media_items").get();
 		return db;
 	} catch (err: any) {
+		if (db) {
+			try {
+				db.close();
+			} catch {}
+			db = null;
+		}
+
 		if (!isCorruptionError(err)) throw err;
 
 		addLog("error", `SQLite database malformed/corrupted: ${err.message}. Attempting recovery...`);
@@ -342,12 +352,18 @@ function getDatabaseConnection(dbPath: string): Database {
 		if (backup) {
 			try {
 				fs.copyFileSync(backup, dbPath);
-				const db = openLibraryDb(dbPath);
+				db = openLibraryDb(dbPath);
 				initializeDatabase(db);
 				db.prepare("SELECT count(*) FROM media_items").get();
 				addLog("info", `Recovered database from backup`, backup);
 				return db;
 			} catch (restoreErr: any) {
+				if (db) {
+					try {
+						db.close();
+					} catch {}
+					db = null;
+				}
 				addLog("error", `Restore from backup failed, recreating empty DB: ${restoreErr.message}`);
 				try {
 					if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
@@ -357,9 +373,18 @@ function getDatabaseConnection(dbPath: string): Database {
 
 		// Last resort: fresh empty library.
 		addLog("warn", "No usable backup; recreating an empty library database.");
-		const db = openLibraryDb(dbPath);
-		initializeDatabase(db);
-		return db;
+		try {
+			db = openLibraryDb(dbPath);
+			initializeDatabase(db);
+			return db;
+		} catch (recreateErr: any) {
+			if (db) {
+				try {
+					db.close();
+				} catch {}
+			}
+			throw recreateErr;
+		}
 	}
 }
 
@@ -390,6 +415,157 @@ function assertWritable(dir: string) {
 		throw Object.assign(new Error(friendlyFsError(err)), { code: err?.code });
 	}
 }
+
+async function moveFile(src: string, dest: string) {
+	try {
+		await fs.promises.rename(src, dest);
+	} catch (err: any) {
+		addLog("info", `fs.rename failed (${err.message}), trying copy + delete fallback...`);
+		await fs.promises.copyFile(src, dest);
+		await fs.promises.unlink(src);
+	}
+}
+
+async function generateThumbnailFile(fullMediaPath: string, thumbPath: string): Promise<boolean> {
+	try {
+		const thumbsDir = path.dirname(thumbPath);
+		if (!fs.existsSync(thumbsDir)) {
+			fs.mkdirSync(thumbsDir, { recursive: true });
+		}
+
+		const ext = path.extname(fullMediaPath).toLowerCase();
+		const isVideo = [".mp4", ".mov", ".avi", ".mkv", ".webm"].includes(ext);
+
+		if (isVideo) {
+			addLog("info", `Generating video thumbnail for: ${fullMediaPath}`);
+			const proc = Bun.spawn([
+				"ffmpeg",
+				"-y",
+				"-ss", "00:00:01",
+				"-i", fullMediaPath,
+				"-vframes", "1",
+				"-vf", "scale=320:-1",
+				thumbPath
+			]);
+			await proc.exited;
+		} else {
+			addLog("info", `Generating image thumbnail for: ${fullMediaPath}`);
+			try {
+				const sharp = require("sharp");
+				await sharp(fullMediaPath)
+					.resize(320)
+					.toFile(thumbPath);
+			} catch (e: any) {
+				addLog("warn", `Sharp failed or not available, falling back to ffmpeg: ${e.message}`);
+				const proc = Bun.spawn([
+					"ffmpeg",
+					"-y",
+					"-i", fullMediaPath,
+					"-vf", "scale=320:-1",
+					"-vframes", "1",
+					thumbPath
+				]);
+				await proc.exited;
+			}
+		}
+
+		return fs.existsSync(thumbPath);
+	} catch (err: any) {
+		addLog("error", `Failed in generateThumbnailFile for ${fullMediaPath}: ${err.message}`, err.stack);
+		return false;
+	}
+}
+
+class ConcurrencyLimiter {
+	private active = 0;
+	private limit: number;
+	private queue: (() => void)[] = [];
+
+	constructor(limit: number) {
+		this.limit = limit;
+	}
+
+	async run<T>(fn: () => Promise<T>): Promise<T> {
+		if (this.active >= this.limit) {
+			await new Promise<void>((resolve) => this.queue.push(resolve));
+		}
+		this.active++;
+		try {
+			return await fn();
+		} finally {
+			this.active--;
+			const next = this.queue.shift();
+			if (next) {
+				next();
+			}
+		}
+	}
+}
+
+const generatorLimiter = new ConcurrencyLimiter(3);
+const activeGenerations = new Map<string, Promise<boolean>>();
+
+async function getOrGenerateThumbnail(fullMediaPath: string, thumbPath: string): Promise<boolean> {
+	if (fs.existsSync(thumbPath)) {
+		return true;
+	}
+
+	let activePromise = activeGenerations.get(thumbPath);
+	if (!activePromise) {
+		activePromise = generatorLimiter.run(() => generateThumbnailFile(fullMediaPath, thumbPath));
+		activeGenerations.set(thumbPath, activePromise);
+		activePromise.finally(() => {
+			activeGenerations.delete(thumbPath);
+		});
+	}
+
+	return activePromise;
+}
+
+interface ThumbnailQueueItem {
+	fullMediaPath: string;
+	thumbPath: string;
+}
+
+class ThumbnailQueue {
+	private queue: ThumbnailQueueItem[] = [];
+	private activeCount = 0;
+	private maxConcurrency = 2;
+
+	public add(fullMediaPath: string, thumbPath: string) {
+		if (this.queue.some(item => item.thumbPath === thumbPath)) {
+			return;
+		}
+		if (fs.existsSync(thumbPath)) {
+			return;
+		}
+		this.queue.push({ fullMediaPath, thumbPath });
+		this.processNext();
+	}
+
+	private async processNext() {
+		if (this.activeCount >= this.maxConcurrency || this.queue.length === 0) {
+			return;
+		}
+
+		const item = this.queue.shift();
+		if (!item) return;
+
+		this.activeCount++;
+		try {
+			if (!fs.existsSync(item.thumbPath)) {
+				await generateThumbnailFile(item.fullMediaPath, item.thumbPath);
+			}
+		} catch (err: any) {
+			addLog("error", `Background thumbnail generation failed: ${err.message}`);
+		} finally {
+			this.activeCount--;
+			setImmediate(() => this.processNext());
+		}
+	}
+}
+
+const backgroundThumbnailQueue = new ThumbnailQueue();
 
 // Active scan tracking state
 interface ScanState {
@@ -456,7 +632,7 @@ async function walkDirectory(
 
 				if (isImage || isVideo) {
 					// Check if already registered to avoid duplication
-					const existing = db.prepare("SELECT id FROM media_items WHERE original_relative_path = ?").get(relativePath) as { id: number } | undefined;
+					const existing = db.prepare("SELECT id, file_hash, current_relative_path FROM media_items WHERE original_relative_path = ?").get(relativePath) as { id: number; file_hash: string; current_relative_path: string } | undefined;
 
 					if (!existing) {
 						// Async fs so each media file is a natural yield point — this
@@ -491,7 +667,7 @@ async function walkDirectory(
 
 						try {
 							// Move the file physically
-							await fs.promises.rename(fullPath, targetFullPath);
+							await moveFile(fullPath, targetFullPath);
 							const currentRelativePath = path.relative(drivePath, targetFullPath);
 
 							let albumId: number | null = null;
@@ -514,9 +690,18 @@ async function walkDirectory(
 
 							scanState.foundCount++;
 							addLog("info", `Moved media file during scan`, `original: ${relativePath} -> current: ${currentRelativePath}`);
+
+							// Queue background thumbnail generation
+							const thumbPath = path.join(drivePath, "albums", "thumbs", `${fileHash}.jpg`);
+							backgroundThumbnailQueue.add(targetFullPath, thumbPath);
 						} catch (moveErr: any) {
 							addLog("error", `Failed to move media file: ${fullPath}`, moveErr.message);
 						}
+					} else {
+						// Already registered, but queue missing thumbnail generation
+						const thumbPath = path.join(drivePath, "albums", "thumbs", `${existing.file_hash}.jpg`);
+						const targetFullPath = path.join(drivePath, existing.current_relative_path);
+						backgroundThumbnailQueue.add(targetFullPath, thumbPath);
 					}
 				}
 			}
@@ -752,12 +937,12 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					};
 				}
 				// If not currently scanning, return database total
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (fs.existsSync(dbPath)) {
-						const db = openReadableDb(dbPath);
+						db = openReadableDb(dbPath);
 						const result = db.prepare("SELECT count(*) as count FROM media_items").get() as { count: number };
-						db.close();
 						return {
 							scanning: false,
 							scannedCount: 0,
@@ -767,6 +952,8 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					}
 				} catch (err: any) {
 					addLog("error", `Failed to read SQLite scan count: ${err.message}`, err.stack);
+				} finally {
+					db?.close();
 				}
 				return {
 					scanning: false,
@@ -776,12 +963,13 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 				};
 			},
 			getMediaItems: async ({ drivePath, limit, offset, search, filter }) => {
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
 						return { items: [], total: 0 };
 					}
-					const db = openReadableDb(dbPath);
+					db = openReadableDb(dbPath);
 
 					let sql = "SELECT * FROM media_items WHERE 1=1";
 					let countSql = "SELECT count(*) as count FROM media_items WHERE 1=1";
@@ -809,21 +997,23 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 
 					const items = db.prepare(sql).all(...params) as any[];
 					const totalResult = db.prepare(countSql).get(...countParams) as { count: number };
-					db.close();
 
 					return { items, total: totalResult.count };
 				} catch (err: any) {
 					addLog("error", `Failed to query media items: ${err.message}`, err.stack);
 					return { items: [], total: 0, error: err.message };
+				} finally {
+					db?.close();
 				}
 			},
 			getMediaItem: async ({ drivePath, itemId, albumId }) => {
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
 						return { error: "Library database not found" };
 					}
-					const db = openReadableDb(dbPath);
+					db = openReadableDb(dbPath);
 					const item = db.prepare(`
 						SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
 						FROM media_items m
@@ -882,7 +1072,6 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 						if (prevRes) prevId = prevRes.id;
 					}
 
-					db.close();
 					if (!item) {
 						return { error: `Media item with ID ${itemId} not found` };
 					}
@@ -890,21 +1079,23 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 				} catch (err: any) {
 					addLog("error", `Failed to query media item: ${err.message}`, err.stack);
 					return { error: err.message };
+				} finally {
+					db?.close();
 				}
 			},
 			getRelatedMedia: async ({ drivePath, itemId, limit }) => {
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
 						return { items: [] };
 					}
-					const db = openReadableDb(dbPath);
+					db = openReadableDb(dbPath);
 
 					const current = db.prepare(
 						"SELECT original_relative_path FROM media_items WHERE id = ?"
 					).get(itemId) as { original_relative_path: string } | undefined;
 					if (!current) {
-						db.close();
 						return { items: [] };
 					}
 
@@ -943,11 +1134,12 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 						}
 					}
 
-					db.close();
 					return { items: collected.slice(0, limit) };
 				} catch (err: any) {
 					addLog("error", `Failed to query related media: ${err.message}`, err.stack);
 					return { items: [], error: err.message };
+				} finally {
+					db?.close();
 				}
 			},
 			backupDatabase: async ({ drivePath }) => {
@@ -1022,68 +1214,12 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 			getThumbnail: async ({ mediaId, relativePath, drivePath, fileHash }) => {
 				addLog("info", `RPC Request: getThumbnail invoked`, `mediaId: ${mediaId}, hash: ${fileHash}`);
 				try {
-					const thumbsDir = path.join(drivePath, "albums", "thumbs");
-					if (!fs.existsSync(thumbsDir)) {
-						fs.mkdirSync(thumbsDir, { recursive: true });
-						addLog("info", `Created thumbs folder: ${thumbsDir}`);
-					}
-
-					const thumbPath = path.join(thumbsDir, `${fileHash}.jpg`);
-					const localUrl = `http://localhost:${MEDIA_SERVER_PORT}/media?path=${encodeURIComponent(thumbPath)}`;
-
-					// If thumbnail already exists, return it immediately
-					if (fs.existsSync(thumbPath)) {
-						return { success: true, url: localUrl };
-					}
-
+					const thumbPath = path.join(drivePath, "albums", "thumbs", `${fileHash}.jpg`);
 					const fullMediaPath = path.join(drivePath, relativePath);
-					if (!fs.existsSync(fullMediaPath)) {
-						throw new Error(`Original media file not found at ${fullMediaPath}`);
-					}
+					const localUrl = `http://localhost:${MEDIA_SERVER_PORT}/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(relativePath)}&fileHash=${fileHash}`;
 
-					const ext = path.extname(fullMediaPath).toLowerCase();
-					const isVideo = [".mp4", ".mov", ".avi", ".mkv", ".webm"].includes(ext);
-
-					if (isVideo) {
-						addLog("info", `Generating video thumbnail for: ${fullMediaPath}`);
-						const proc = Bun.spawn([
-							"ffmpeg",
-							"-y",
-							"-ss", "00:00:01",
-							"-i", fullMediaPath,
-							"-vframes", "1",
-							"-vf", "scale=320:-1",
-							thumbPath
-						]);
-						await proc.exited;
-					} else {
-						// Image thumbnail
-						addLog("info", `Generating image thumbnail for: ${fullMediaPath}`);
-						try {
-							const sharp = require("sharp");
-							await sharp(fullMediaPath)
-								.resize(320)
-								.toFile(thumbPath);
-						} catch (e: any) {
-							addLog("warn", `Sharp failed or not available, falling back to ffmpeg: ${e.message}`);
-							const proc = Bun.spawn([
-								"ffmpeg",
-								"-y",
-								"-i", fullMediaPath,
-								"-vf", "scale=320:-1",
-								"-vframes", "1",
-								thumbPath
-							]);
-							await proc.exited;
-						}
-					}
-
-					if (fs.existsSync(thumbPath)) {
-						addLog("info", `Successfully generated thumbnail: ${thumbPath}`);
-						return { success: true, url: localUrl };
-					} else {
-						throw new Error("Thumbnail file was not created by generator");
-					}
+					await getOrGenerateThumbnail(fullMediaPath, thumbPath);
+					return { success: true, url: localUrl };
 				} catch (err: any) {
 					addLog("error", `Failed to get or generate thumbnail: ${err.message}`, err.stack);
 					return { success: false, error: err.message };
@@ -1094,13 +1230,15 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 			},
 			getAlbums: async ({ drivePath }) => {
 				addLog("info", `RPC Request: getAlbums invoked`, `drivePath: ${drivePath}`);
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
 						return { albums: [] };
 					}
-					const db = openReadableDb(dbPath);
-					const rawAlbums = db.prepare(`
+					const activeDb = openReadableDb(dbPath);
+					db = activeDb;
+					const rawAlbums = activeDb.prepare(`
 						SELECT id, name, relative_path, description, created_at
 						FROM albums
 						ORDER BY name ASC
@@ -1108,10 +1246,10 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 
 					const albums = rawAlbums.map(album => {
 						// Get count of media items in this album
-						const countResult = db.prepare("SELECT count(*) as count FROM media_items WHERE album_id = ?").get(album.id) as { count: number };
+						const countResult = activeDb.prepare("SELECT count(*) as count FROM media_items WHERE album_id = ?").get(album.id) as { count: number };
 						
 						// Get preview item for this album (newest item)
-						const previewItem = db.prepare(`
+						const previewItem = activeDb.prepare(`
 							SELECT id, file_hash, original_relative_path, current_relative_path, mime_type
 							FROM media_items
 							WHERE album_id = ?
@@ -1130,23 +1268,24 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 						};
 					});
 					
-					db.close();
 					return { albums };
 				} catch (err: any) {
 					addLog("error", `Failed to get albums: ${err.message}`, err.stack);
 					return { albums: [], error: err.message };
+				} finally {
+					db?.close();
 				}
 			},
 			getAlbum: async ({ drivePath, albumId }) => {
 				addLog("info", `RPC Request: getAlbum invoked`, `albumId: ${albumId}`);
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
 						return { error: "Library database not found" };
 					}
-					const db = openReadableDb(dbPath);
+					db = openReadableDb(dbPath);
 					const album = db.prepare("SELECT * FROM albums WHERE id = ?").get(albumId) as any;
-					db.close();
 					if (!album) {
 						return { error: `Album with ID ${albumId} not found` };
 					}
@@ -1154,16 +1293,19 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 				} catch (err: any) {
 					addLog("error", `Failed to query album detail: ${err.message}`, err.stack);
 					return { error: err.message };
+				} finally {
+					db?.close();
 				}
 			},
 			getAlbumMedia: async ({ drivePath, albumId, limit, offset }) => {
 				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}`);
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
 						return { items: [], total: 0 };
 					}
-					const db = openReadableDb(dbPath);
+					db = openReadableDb(dbPath);
 					const items = db.prepare(`
 						SELECT * FROM media_items 
 						WHERE album_id = ? 
@@ -1172,15 +1314,17 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					`).all(albumId, limit, offset) as any[];
 					
 					const totalResult = db.prepare("SELECT count(*) as count FROM media_items WHERE album_id = ?").get(albumId) as { count: number };
-					db.close();
 					return { items, total: totalResult.count };
 				} catch (err: any) {
 					addLog("error", `Failed to query album media items: ${err.message}`, err.stack);
 					return { items: [], total: 0, error: err.message };
+				} finally {
+					db?.close();
 				}
 			},
 			moveMediaItemsToAlbum: async ({ drivePath, mediaIds, targetAlbumId }) => {
 				addLog("info", `RPC Request: moveMediaItemsToAlbum invoked`, `mediaIds count: ${mediaIds.length}, targetAlbumId: ${targetAlbumId}`);
+				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
 					if (!fs.existsSync(dbPath)) {
@@ -1188,12 +1332,11 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					}
 
 					assertWritable(drivePath);
-					const db = getDatabaseConnection(dbPath);
+					db = getDatabaseConnection(dbPath);
 
 					// 1. Get target album details
 					const album = db.prepare("SELECT * FROM albums WHERE id = ?").get(targetAlbumId) as { name: string; relative_path: string } | undefined;
 					if (!album) {
-						db.close();
 						throw new Error(`Target album with ID ${targetAlbumId} not found`);
 					}
 
@@ -1203,60 +1346,79 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 
 					let movedCount = 0;
 
-					// 2. Loop through and move each item
-					for (const id of mediaIds) {
-						const item = db.prepare("SELECT * FROM media_items WHERE id = ?").get(id) as { current_relative_path: string; mime_type: string } | undefined;
-						if (!item) continue;
+					db.run("BEGIN TRANSACTION;");
+					try {
+						// 2. Loop through and move each item
+						for (const id of mediaIds) {
+							const item = db.prepare("SELECT * FROM media_items WHERE id = ?").get(id) as { current_relative_path: string; mime_type: string } | undefined;
+							if (!item) continue;
 
-						const currentFullPath = path.join(drivePath, item.current_relative_path);
-						if (!fs.existsSync(currentFullPath)) {
-							addLog("warn", `File does not exist at current path, skipping physical move: ${currentFullPath}`);
-							// Update DB anyway to keep it consistent
-							db.prepare("UPDATE media_items SET album_id = ? WHERE id = ?").run(targetAlbumId, id);
-							movedCount++;
-							continue;
-						}
-
-						const filename = path.basename(item.current_relative_path);
-						const ext = path.extname(filename);
-						const base = path.basename(filename, ext);
-
-						// Determine target full path, avoiding collisions
-						let targetFullPath = path.join(destDir, filename);
-						let finalFilename = filename;
-						if (fs.existsSync(targetFullPath)) {
-							let counter = 1;
-							while (fs.existsSync(path.join(destDir, `${base}_${counter}${ext}`))) {
-								counter++;
+							const currentFullPath = path.join(drivePath, item.current_relative_path);
+							if (!fs.existsSync(currentFullPath)) {
+								addLog("warn", `File does not exist at current path, skipping physical move: ${currentFullPath}`);
+								// Update DB anyway to keep it consistent
+								db.prepare("UPDATE media_items SET album_id = ? WHERE id = ?").run(targetAlbumId, id);
+								movedCount++;
+								continue;
 							}
-							finalFilename = `${base}_${counter}${ext}`;
-							targetFullPath = path.join(destDir, finalFilename);
+
+							const filename = path.basename(item.current_relative_path);
+							const ext = path.extname(filename);
+							const base = path.basename(filename, ext);
+
+							// Determine target full path, avoiding collisions
+							let targetFullPath = path.join(destDir, filename);
+							let finalFilename = filename;
+							if (fs.existsSync(targetFullPath)) {
+								let counter = 1;
+								while (fs.existsSync(path.join(destDir, `${base}_${counter}${ext}`))) {
+									counter++;
+								}
+								finalFilename = `${base}_${counter}${ext}`;
+								targetFullPath = path.join(destDir, finalFilename);
+							}
+
+							// If target is same as current, skip physical rename, only update DB
+							if (path.resolve(currentFullPath) === path.resolve(targetFullPath)) {
+								db.prepare(`
+									UPDATE media_items 
+									SET album_id = ? 
+									WHERE id = ?
+								`).run(targetAlbumId, id);
+								movedCount++;
+								continue;
+							}
+
+							try {
+								// Move physical file (with fallback)
+								await moveFile(currentFullPath, targetFullPath);
+								const newRelativePath = path.relative(drivePath, targetFullPath);
+
+								// Update database
+								db.prepare(`
+									UPDATE media_items 
+									SET album_id = ?, current_relative_path = ? 
+									WHERE id = ?
+								`).run(targetAlbumId, newRelativePath, id);
+
+								movedCount++;
+							} catch (moveErr: any) {
+								addLog("error", `Failed to move physical file ${currentFullPath} to ${targetFullPath}: ${moveErr.message}`);
+							}
 						}
-
-						try {
-							// Move physical file
-							await fs.promises.rename(currentFullPath, targetFullPath);
-							const newRelativePath = path.relative(drivePath, targetFullPath);
-
-							// Update database
-							db.prepare(`
-								UPDATE media_items 
-								SET album_id = ?, current_relative_path = ? 
-								WHERE id = ?
-							`).run(targetAlbumId, newRelativePath, id);
-
-							movedCount++;
-						} catch (moveErr: any) {
-							addLog("error", `Failed to move physical file ${currentFullPath} to ${targetFullPath}: ${moveErr.message}`);
-						}
+						db.run("COMMIT;");
+					} catch (loopErr) {
+						db.run("ROLLBACK;");
+						throw loopErr;
 					}
 
-					db.close();
 					addLog("info", `Successfully moved ${movedCount} items to album ${album.name}`);
 					return { success: true, movedCount };
 				} catch (err: any) {
 					addLog("error", `Failed to move media items: ${err.message}`, err.stack);
 					return { success: false, movedCount: 0, error: err.message };
+				} finally {
+					db?.close();
 				}
 			}
 		}
@@ -1287,9 +1449,43 @@ const mediaServer = Bun.serve({
 			try {
 				const file = Bun.file(filePath);
 				if (await file.exists()) {
-					return new Response(file, { headers: corsHeaders });
+					return new Response(file, {
+						headers: {
+							...corsHeaders,
+							"Cache-Control": "public, max-age=86400",
+						}
+					});
 				}
 				return new Response("File not found", { status: 404, headers: corsHeaders });
+			} catch (err: any) {
+				return new Response(err.message, { status: 500, headers: corsHeaders });
+			}
+		}
+
+		if (url.pathname === "/media/thumb") {
+			const drivePath = url.searchParams.get("drivePath");
+			const relativePath = url.searchParams.get("relativePath");
+			const fileHash = url.searchParams.get("fileHash");
+
+			if (!drivePath || !relativePath || !fileHash) {
+				return new Response("Missing parameter (drivePath/relativePath/fileHash)", { status: 400, headers: corsHeaders });
+			}
+
+			const thumbPath = path.join(drivePath, "albums", "thumbs", `${fileHash}.jpg`);
+			const fullMediaPath = path.join(drivePath, relativePath);
+
+			try {
+				const success = await getOrGenerateThumbnail(fullMediaPath, thumbPath);
+				if (success) {
+					const file = Bun.file(thumbPath);
+					return new Response(file, {
+						headers: {
+							...corsHeaders,
+							"Cache-Control": "public, max-age=31536000, immutable",
+						}
+					});
+				}
+				return new Response("Failed to serve or generate thumbnail", { status: 500, headers: corsHeaders });
 			} catch (err: any) {
 				return new Response(err.message, { status: 500, headers: corsHeaders });
 			}

@@ -72,9 +72,6 @@ function ItemViewerComponent() {
     const loadItem = async () => {
       setLoading(true);
       setError(null);
-      // The main process may briefly be busy with a scan, so a first RPC can
-      // time out. A backend response (res.error / res.item) is authoritative;
-      // only a thrown/timed-out request is retried with a short backoff.
       const maxAttempts = 4;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -137,8 +134,6 @@ function ItemViewerComponent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nextId, prevId, albumId, navigate]);
 
-  // Load related media (siblings from the same source folder, backfilled with
-  // recent items) in parallel with the main item.
   useEffect(() => {
     if (!selectedDrive?.path) return;
 
@@ -165,13 +160,11 @@ function ItemViewerComponent() {
     };
   }, [selectedDrive, id]);
 
-  // Format filename
   const fileName =
     item?.original_relative_path.split("/").pop() ||
     item?.original_relative_path ||
     "Media Viewer";
 
-  // Format media URL using Bun server path parameter
   const mediaUrl =
     item && selectedDrive
       ? `http://localhost:51789/media?path=${encodeURIComponent(selectedDrive.path + "/" + item.current_relative_path)}`
@@ -202,10 +195,10 @@ function ItemViewerComponent() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] text-center p-6">
         <Loader2 className="w-8 h-8 text-primary animate-spin mb-4" />
-        <h3 className="text-white font-bold text-lg">
+        <h3 className="text-base-content font-bold text-lg">
           Waiting for Drive Selection...
         </h3>
-        <p className="text-slate-500 text-xs mt-1 max-w-xs">
+        <p className="text-base-content/40 text-xs mt-1 max-w-xs">
           Please select the correct drive in the sidebar or wait for the system
           to mount it.
         </p>
@@ -220,7 +213,7 @@ function ItemViewerComponent() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh]">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-        <p className="text-slate-500 text-xs font-bold">
+        <p className="text-base-content/40 text-xs font-bold">
           Loading media file details...
         </p>
       </div>
@@ -233,8 +226,8 @@ function ItemViewerComponent() {
         <div className="w-16 h-16 rounded-full bg-error/10 border border-error/25 flex items-center justify-center mb-4 text-error">
           <Info className="w-8 h-8" />
         </div>
-        <h3 className="text-white font-bold text-lg">Unable to Load Media</h3>
-        <p className="text-slate-500 text-xs mt-1 max-w-sm">
+        <h3 className="text-base-content font-bold text-lg">Unable to Load Media</h3>
+        <p className="text-base-content/40 text-xs mt-1 max-w-sm">
           {error ||
             "The selected media item was not found in this drive's catalog database."}
         </p>
@@ -262,12 +255,12 @@ function ItemViewerComponent() {
               navigate({ to: "/medias" });
             }
           }}
-          className="btn btn-sm btn-ghost border border-slate-900 bg-slate-950/40 text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+          className="btn btn-sm btn-ghost border border-base-200 bg-base-300/40 text-base-content/60 hover:text-base-content flex items-center gap-1 cursor-pointer"
         >
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
         <span
-          className={`text-xs text-slate-500 font-mono truncate max-w-xs md:max-w-md transition-opacity duration-300 ${loading ? "opacity-40" : "opacity-100"}`}
+          className={`text-xs text-base-content/40 font-mono truncate max-w-xs md:max-w-md transition-opacity duration-300 ${loading ? "opacity-40" : "opacity-100"}`}
         >
           {fileName}
         </span>
@@ -276,14 +269,14 @@ function ItemViewerComponent() {
       {/* Layout Wrapper */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left Column: Media Player (2/3 width on desktop) */}
-        <div className="lg:col-span-2 rounded-2xl border border-slate-900 bg-slate-950 overflow-hidden shadow-2xl flex flex-col items-center justify-center h-[50vh] md:h-[60vh] lg:h-[65vh] p-4 relative group">
+        <div className="lg:col-span-2 rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl flex flex-col items-center justify-center h-[50vh] md:h-[60vh] lg:h-[65vh] p-4 relative group">
           {/* Previous item button overlay */}
           {prevId && (
             <Link
               to="/item/$id"
               params={{ id: String(prevId) }}
               search={{ albumId }}
-              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-slate-950/70 hover:bg-base-100 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/70 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
               title="Previous item (Left Arrow)"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -296,7 +289,7 @@ function ItemViewerComponent() {
               to="/item/$id"
               params={{ id: String(nextId) }}
               search={{ albumId }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-slate-950/70 hover:bg-base-100 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/70 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
               title="Next item (Right Arrow)"
             >
               <ChevronRight className="w-5 h-5" />
@@ -312,11 +305,10 @@ function ItemViewerComponent() {
                 src={mediaUrl}
                 className="w-full h-full max-h-[70vh] object-contain rounded-lg bg-black"
               />
-              {/* Floating overlay so it never steals width from the player */}
               <button
                 onClick={openInExternalPlayer}
                 disabled={launching}
-                className="absolute top-3 right-3 z-10 btn btn-xs btn-ghost bg-slate-950/70 backdrop-blur-md border border-slate-800 text-slate-300 hover:text-white font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-3 right-3 z-10 btn btn-xs btn-ghost bg-base-300/70 backdrop-blur-md border border-base-300 text-base-content/80 hover:text-base-content font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Open in your system player (mpv)"
               >
                 {launching ? (
@@ -327,7 +319,7 @@ function ItemViewerComponent() {
                 <span className="hidden sm:inline">External Player</span>
               </button>
               {launchError && (
-                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-slate-950/80 px-2 py-1 rounded-md border border-error/20">
+                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20">
                   {launchError}
                 </p>
               )}
@@ -343,9 +335,9 @@ function ItemViewerComponent() {
 
           {/* Transition Loading Overlay inside player */}
           {loading && (
-            <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-[2px] flex flex-col items-center justify-center z-20 transition-all duration-300">
+            <div className="absolute inset-0 bg-base-300/75 backdrop-blur-[2px] flex flex-col items-center justify-center z-20 transition-all duration-300">
               <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
-              <p className="text-slate-400 text-xs font-bold">
+              <p className="text-base-content/60 text-xs font-bold">
                 Loading media details...
               </p>
             </div>
@@ -354,11 +346,11 @@ function ItemViewerComponent() {
 
         {/* Right Column: Metadata Details Panel (1/3 width) */}
         <div
-          className={`p-6 rounded-2xl bg-gradient-to-br from-slate-900/60 to-slate-950/40 border border-slate-900 shadow-xl space-y-6 transition-all duration-300 ${loading ? "opacity-40 pointer-events-none filter blur-[0.5px]" : "opacity-100"}`}
+          className={`p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl space-y-6 transition-all duration-300 ${loading ? "opacity-40 pointer-events-none filter blur-[0.5px]" : "opacity-100"}`}
         >
           <div>
             <h3
-              className="text-base font-black text-white leading-tight mb-1 truncate"
+              className="text-base font-black text-base-content leading-tight mb-1 truncate"
               title={fileName}
             >
               {fileName}
@@ -370,27 +362,27 @@ function ItemViewerComponent() {
 
           {/* Metadata Info Cards */}
           <div className="space-y-4 text-xs">
-            {/* File size & type */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+            {/* File size */}
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
               <File className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <div>
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   File Size
                 </span>
-                <span className="font-mono text-white text-xs">
+                <span className="font-mono text-base-content text-xs">
                   {formatBytes(item.file_size)}
                 </span>
               </div>
             </div>
 
             {/* Scan / Creation Date */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
               <Calendar className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <div>
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   Discovered At
                 </span>
-                <span className="text-white text-xs">
+                <span className="text-base-content text-xs">
                   {new Date(item.created_at).toLocaleString()}
                 </span>
               </div>
@@ -398,10 +390,10 @@ function ItemViewerComponent() {
 
             {/* Album Link */}
             {item.album_id && (
-              <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+              <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
                 <Folder className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                 <div className="min-w-0">
-                  <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                  <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                     Album
                   </span>
                   <Link
@@ -418,68 +410,68 @@ function ItemViewerComponent() {
             )}
 
             {/* Storage Volume info */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
               <HardDrive className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0">
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   Storage Volume
                 </span>
-                <span className="text-white text-xs block truncate font-medium">
+                <span className="text-base-content text-xs block truncate font-medium">
                   {selectedDrive.name}
                 </span>
-                <span className="text-[9px] font-mono text-slate-500 block truncate">
+                <span className="text-[9px] font-mono text-base-content/40 block truncate">
                   {selectedDrive.path}
                 </span>
               </div>
             </div>
 
-            {/* Original Path before catalog sorting */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+            {/* Original Path */}
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
               <FolderOpen className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-grow">
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   Original Location
                 </span>
-                <p className="text-slate-400 font-mono text-[10px] select-all break-all leading-normal">
+                <p className="text-base-content/60 font-mono text-[10px] select-all break-all leading-normal">
                   {item.original_relative_path}
                 </p>
               </div>
             </div>
 
-            {/* Catalog Active Sorted Path */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
-              <FolderOpen className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+            {/* Active Catalog Path */}
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
+              <FolderOpen className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-grow">
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   Active Catalog Path
                 </span>
-                <p className="text-slate-300 font-mono text-[10px] select-all break-all leading-normal">
+                <p className="text-base-content/80 font-mono text-[10px] select-all break-all leading-normal">
                   {item.current_relative_path}
                 </p>
               </div>
             </div>
 
             {/* Full MIME Type */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
               <File className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <div>
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   Full MIME Type
                 </span>
-                <span className="font-mono text-slate-300 text-xs">
+                <span className="font-mono text-base-content/80 text-xs">
                   {item.mime_type}
                 </span>
               </div>
             </div>
 
-            {/* File Hash Identifier */}
-            <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+            {/* File Hash */}
+            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
               <Hash className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0">
-                <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                   File Hash Identifier
                 </span>
-                <span className="font-mono text-slate-400 text-[10px] select-all break-all leading-normal">
+                <span className="font-mono text-base-content/60 text-[10px] select-all break-all leading-normal">
                   {item.file_hash}
                 </span>
               </div>
@@ -488,13 +480,13 @@ function ItemViewerComponent() {
             {/* Video Duration */}
             {item.duration_seconds !== null &&
               item.duration_seconds !== undefined && (
-                <div className="flex gap-3 items-start border-b border-slate-900/80 pb-3">
+                <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
                   <Clock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                   <div>
-                    <span className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                    <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
                       Duration
                     </span>
-                    <span className="text-white text-xs">
+                    <span className="text-base-content text-xs">
                       {formatDuration(item.duration_seconds)}
                     </span>
                   </div>
@@ -514,19 +506,19 @@ function ItemViewerComponent() {
               const keys = Object.keys(extraMeta);
               if (keys.length === 0) return null;
               return (
-                <div className="border-t border-slate-900/80 pt-4 mt-4 space-y-3">
-                  <h4 className="text-[10px] uppercase font-black text-slate-400 tracking-wider">
+                <div className="border-t border-base-200/80 pt-4 mt-4 space-y-3">
+                  <h4 className="text-[10px] uppercase font-black text-base-content/60 tracking-wider">
                     Embedded Metadata
                   </h4>
                   {keys.map((key) => (
                     <div
                       key={key}
-                      className="flex justify-between items-start gap-2 border-b border-slate-900/50 pb-1.5 last:border-0 last:pb-0"
+                      className="flex justify-between items-start gap-2 border-b border-base-200/50 pb-1.5 last:border-0 last:pb-0"
                     >
-                      <span className="text-slate-500 font-mono text-[10px]">
+                      <span className="text-base-content/40 font-mono text-[10px]">
                         {key}
                       </span>
-                      <span className="text-white font-mono text-[10px] break-all select-all text-right">
+                      <span className="text-base-content font-mono text-[10px] break-all select-all text-right">
                         {typeof extraMeta[key] === "object"
                           ? JSON.stringify(extraMeta[key])
                           : String(extraMeta[key])}
@@ -552,14 +544,14 @@ function ItemViewerComponent() {
       <div className="space-y-4 pt-2">
         <div className="flex items-center gap-2">
           <LayoutGrid className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-black tracking-wider text-slate-300 uppercase">
+          <h3 className="text-sm font-black tracking-wider text-base-content/80 uppercase">
             Related Media
           </h3>
           {relatedLoading ? (
-            <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 text-base-content/40 animate-spin" />
           ) : (
             related.length > 0 && (
-              <span className="badge badge-sm badge-outline border-slate-800 text-slate-500 font-bold">
+              <span className="badge badge-sm badge-outline border-base-300 text-base-content/40 font-bold">
                 {related.length}
               </span>
             )
@@ -567,12 +559,12 @@ function ItemViewerComponent() {
         </div>
 
         {relatedLoading && related.length === 0 ? (
-          <div className="flex items-center gap-2 text-slate-500 text-xs py-8">
+          <div className="flex items-center gap-2 text-base-content/40 text-xs py-8">
             <Loader2 className="w-4 h-4 animate-spin" /> Finding related
             media...
           </div>
         ) : related.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-base-100/20 border border-slate-900/50 text-slate-600 text-xs">
+          <div className="p-8 text-center rounded-2xl bg-base-100/20 border border-base-200/50 text-base-content/30 text-xs">
             No related media found in this folder.
           </div>
         ) : (

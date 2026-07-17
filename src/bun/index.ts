@@ -971,26 +971,31 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					}
 					db = openReadableDb(dbPath);
 
-					let sql = "SELECT * FROM media_items WHERE 1=1";
+					let sql = `
+						SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
+						FROM media_items m
+						LEFT JOIN albums a ON m.album_id = a.id
+						WHERE 1=1
+					`;
 					let countSql = "SELECT count(*) as count FROM media_items WHERE 1=1";
 					const params: any[] = [];
 
 					if (search) {
-						sql += " AND (original_relative_path LIKE ? OR current_relative_path LIKE ?)";
+						sql += " AND (m.original_relative_path LIKE ? OR m.current_relative_path LIKE ?)";
 						countSql += " AND (original_relative_path LIKE ? OR current_relative_path LIKE ?)";
 						const term = `%${search}%`;
 						params.push(term, term);
 					}
 
 					if (filter === "images") {
-						sql += " AND mime_type LIKE 'image/%'";
+						sql += " AND m.mime_type LIKE 'image/%'";
 						countSql += " AND mime_type LIKE 'image/%'";
 					} else if (filter === "videos") {
-						sql += " AND mime_type LIKE 'video/%'";
-						countSql += " AND mime_type LIKE 'video/%'";
+						sql += " AND m.mime_type LIKE 'video/%'";
+						countSql += " AND m.mime_type LIKE 'video/%'";
 					}
 
-					sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+					sql += " ORDER BY m.created_at DESC LIMIT ? OFFSET ?";
 
 					const countParams = [...params];
 					params.push(limit, offset);
@@ -1297,8 +1302,8 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					db?.close();
 				}
 			},
-			getAlbumMedia: async ({ drivePath, albumId, limit, offset }) => {
-				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}`);
+			getAlbumMedia: async ({ drivePath, albumId, limit, offset, search }) => {
+				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}, search: ${search}`);
 				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
@@ -1306,15 +1311,40 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 						return { items: [], total: 0 };
 					}
 					db = openReadableDb(dbPath);
-					const items = db.prepare(`
-						SELECT * FROM media_items 
-						WHERE album_id = ? 
-						ORDER BY created_at DESC 
-						LIMIT ? OFFSET ?
-					`).all(albumId, limit, offset) as any[];
+					let items: any[] = [];
+					let totalCount = 0;
 					
-					const totalResult = db.prepare("SELECT count(*) as count FROM media_items WHERE album_id = ?").get(albumId) as { count: number };
-					return { items, total: totalResult.count };
+					if (search) {
+						const searchPattern = `%${search}%`;
+						items = db.prepare(`
+							SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
+							FROM media_items m
+							LEFT JOIN albums a ON m.album_id = a.id
+							WHERE m.album_id = ? AND m.original_relative_path LIKE ?
+							ORDER BY m.created_at DESC 
+							LIMIT ? OFFSET ?
+						`).all(albumId, searchPattern, limit, offset) as any[];
+						
+						const totalResult = db.prepare(`
+							SELECT count(*) as count FROM media_items 
+							WHERE album_id = ? AND original_relative_path LIKE ?
+						`).get(albumId, searchPattern) as { count: number };
+						totalCount = totalResult.count;
+					} else {
+						items = db.prepare(`
+							SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
+							FROM media_items m
+							LEFT JOIN albums a ON m.album_id = a.id
+							WHERE m.album_id = ? 
+							ORDER BY m.created_at DESC 
+							LIMIT ? OFFSET ?
+						`).all(albumId, limit, offset) as any[];
+						
+						const totalResult = db.prepare("SELECT count(*) as count FROM media_items WHERE album_id = ?").get(albumId) as { count: number };
+						totalCount = totalResult.count;
+					}
+					
+					return { items, total: totalCount };
 				} catch (err: any) {
 					addLog("error", `Failed to query album media items: ${err.message}`, err.stack);
 					return { items: [], total: 0, error: err.message };

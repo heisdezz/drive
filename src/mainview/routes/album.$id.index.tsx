@@ -19,10 +19,12 @@ import {
 import { LegendList } from "@legendapp/list/react";
 import DialogModal, { ModalHandle } from "@/components/DialogModal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import SearchBar from "@/components/Searchbar";
 
 interface AlbumSearch {
   page?: number;
   limit?: number;
+  search?: string;
 }
 
 export const Route = createFileRoute("/album/$id/")({
@@ -31,6 +33,7 @@ export const Route = createFileRoute("/album/$id/")({
     return {
       page: Number(search.page) || 0,
       limit: Number(search.limit) || 100,
+      search: (search.search as string) || "",
     };
   },
 });
@@ -38,7 +41,7 @@ export const Route = createFileRoute("/album/$id/")({
 function AlbumDetailComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
   const { id } = Route.useParams();
-  const { page = 0, limit = 100 } = Route.useSearch();
+  const { page = 0, limit = 100, search = "" } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
 
   const queryClient = useQueryClient();
@@ -68,7 +71,7 @@ function AlbumDetailComponent() {
     isLoading: isMediaLoading,
     error: mediaError,
   } = useQuery({
-    queryKey: ["album-media", selectedDrive?.path, albumId, page, limit],
+    queryKey: ["album-media", selectedDrive?.path, albumId, page, limit, search],
     queryFn: async () => {
       if (!selectedDrive?.path || isNaN(albumId))
         return { items: [], total: 0 };
@@ -77,6 +80,7 @@ function AlbumDetailComponent() {
         albumId,
         limit,
         offset: page * limit,
+        search,
       });
       if (res.error) throw new Error(res.error);
       return {
@@ -139,7 +143,6 @@ function AlbumDetailComponent() {
       setIsSelecting(false);
       setTargetAlbumId(null);
       setAlbumSearchQuery("");
-      // Invalidate queries to trigger background updates
       queryClient.invalidateQueries({
         queryKey: ["album", selectedDrive?.path, albumId],
       });
@@ -162,6 +165,10 @@ function AlbumDetailComponent() {
 
   const handleLimitChange = (newLimit: number) => {
     navigate({ search: (prev) => ({ ...prev, page: 0, limit: newLimit }) });
+  };
+
+  const setSearchQuery = (newSearch: string) => {
+    navigate({ search: (prev) => ({ ...prev, page: 0, search: newSearch }) });
   };
 
   const toggleItemSelection = (itemId: number) => {
@@ -203,18 +210,18 @@ function AlbumDetailComponent() {
   if (!selectedDrive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <Compass className="w-10 h-10 text-slate-500 group-hover:text-primary transition-colors duration-300" />
+          <Compass className="w-10 h-10 text-base-content/40 group-hover:text-primary transition-colors duration-300" />
         </div>
-        <h3 className="text-2xl font-black text-white mb-2">
+        <h3 className="text-2xl font-black text-base-content mb-2">
           No Drive Selected
         </h3>
-        <p className="text-slate-400 text-sm max-w-sm leading-relaxed mb-6">
+        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
           Please select a connected drive or storage volume from the sidebar to
           inspect cataloged albums.
         </p>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-base-200 text-[10px] text-base-content/40 font-medium">
           <Info className="w-3.5 h-3.5" />
           Select a drive then scan it under the Discover tab.
         </div>
@@ -226,14 +233,14 @@ function AlbumDetailComponent() {
   if (selectedDrive.status === "unmounted") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 to-transparent opacity-100 transition-opacity duration-300"></div>
-          <HardDrive className="w-10 h-10 text-slate-500 group-hover:text-amber-400 transition-colors duration-300 animate-pulse" />
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-tr from-warning/10 to-transparent opacity-100 transition-opacity duration-300"></div>
+          <HardDrive className="w-10 h-10 text-base-content/40 group-hover:text-warning transition-colors duration-300 animate-pulse" />
         </div>
-        <h3 className="text-2xl font-black text-white mb-2">
+        <h3 className="text-2xl font-black text-base-content mb-2">
           {selectedDrive.name} is Unmounted
         </h3>
-        <p className="text-slate-400 text-sm max-w-sm leading-relaxed mb-6">
+        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
           This storage device needs to be mounted before you can view its
           albums.
         </p>
@@ -272,15 +279,15 @@ function AlbumDetailComponent() {
                 navigate({ to: "/albums" });
               }
             }}
-            className="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-slate-400 hover:text-white cursor-pointer"
+            className="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content cursor-pointer"
           >
             <ChevronLeft className="w-3.5 h-3.5" /> Back
           </button>
         </div>
-        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
           <Info className="w-12 h-12 text-error mx-auto mb-4" />
-          <h3 className="text-white font-bold">Error Loading Album</h3>
-          <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">
+          <h3 className="text-base-content font-bold">Error Loading Album</h3>
+          <p className="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
             {error}
           </p>
         </div>
@@ -313,25 +320,25 @@ function AlbumDetailComponent() {
               navigate({ to: "/albums" });
             }
           }}
-          className="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+          className="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content rounded-lg transition-colors cursor-pointer"
         >
           <ChevronLeft className="w-3.5 h-3.5" /> Back
         </button>
       </div>
 
       {/* Album Header Block */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900/60 to-slate-950/40 border border-slate-900 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-indigo-500 flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
-            <FolderOpen className="w-6 h-6 text-white" />
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
+            <FolderOpen className="w-6 h-6 text-primary-content" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white leading-tight">
+            <h2 className="text-xl font-black text-base-content leading-tight">
               {album?.name === "unknown"
                 ? "Unsorted Media"
                 : album?.name || "Loading Album..."}
             </h2>
-            <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider block mt-0.5">
+            <span className="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider block mt-0.5">
               {album?.relative_path} · {totalItems} items
             </span>
           </div>
@@ -339,8 +346,8 @@ function AlbumDetailComponent() {
 
         <div className="flex items-center gap-3 ml-auto md:ml-0">
           {album && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-slate-800 text-[10px] text-slate-400 font-mono">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-base-300 text-[10px] text-base-content/60 font-mono">
+              <Calendar className="w-3.5 h-3.5 text-base-content/40" />
               <span>
                 Indexed: {new Date(album.created_at).toLocaleDateString()}
               </span>
@@ -367,7 +374,7 @@ function AlbumDetailComponent() {
                   });
                 }
               }}
-              className="btn btn-sm btn-outline border-slate-800 text-slate-300 font-bold hover:bg-base-100 cursor-pointer"
+              className="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
             >
               {mediaItems.every((item) => selectedItems.has(item.id))
                 ? "Deselect All"
@@ -382,8 +389,8 @@ function AlbumDetailComponent() {
             }}
             className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
               isSelecting
-                ? "btn-secondary text-white"
-                : "btn-outline border-slate-800 text-slate-300"
+                ? "btn-secondary text-secondary-content"
+                : "btn-outline border-base-300 text-base-content/80"
             }`}
           >
             {isSelecting ? "Cancel" : "Select Items"}
@@ -391,25 +398,32 @@ function AlbumDetailComponent() {
         </div>
       </div>
 
+      {/* Search Bar Block */}
+      <div className="bg-base-200/40 border border-base-200 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">
+        <div className="w-full max-w-md">
+          <SearchBar value={search} onChange={setSearchQuery} />
+        </div>
+      </div>
+
       {/* Control Bar */}
-      <div className="flex justify-between items-center gap-2 bg-slate-950/50 border border-slate-900 px-4 py-2.5 rounded-xl shadow-md">
+      <div className="flex justify-between items-center gap-2 bg-base-300/50 border border-base-200 px-4 py-2.5 rounded-xl shadow-md">
         <button
           onClick={handleRefresh}
           disabled={loading}
-          className="btn btn-xs btn-outline border-slate-800 text-slate-300 gap-1.5 font-bold hover:bg-base-100 cursor-pointer"
+          className="btn btn-xs btn-outline border-base-300 text-base-content/80 gap-1.5 font-bold hover:bg-base-100 cursor-pointer"
         >
           <RotateCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400 font-medium">
+          <span className="text-xs text-base-content/60 font-medium">
             Items per page:
           </span>
           <select
             value={limit}
             onChange={(e) => handleLimitChange(Number(e.target.value))}
-            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-slate-800 text-slate-300 focus:outline-none focus:border-primary/60 cursor-pointer"
+            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60 cursor-pointer"
           >
             {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map(
               (val) => (
@@ -426,15 +440,15 @@ function AlbumDetailComponent() {
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[40vh] py-12">
           <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-xs text-slate-500 font-bold">
+          <p className="text-xs text-base-content/40 font-bold">
             Loading Album Content...
           </p>
         </div>
       ) : mediaItems.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
-          <ImageIcon className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-          <h3 className="text-white font-bold">No Items Found</h3>
-          <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
+          <ImageIcon className="w-12 h-12 text-base-content/20 mx-auto mb-4" />
+          <h3 className="text-base-content font-bold">No Items Found</h3>
+          <p className="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
             This album is currently empty.
           </p>
         </div>
@@ -453,7 +467,7 @@ function AlbumDetailComponent() {
                         type="checkbox"
                         checked={selectedItems.has(item.id)}
                         onChange={() => toggleItemSelection(item.id)}
-                        className="checkbox checkbox-primary border-2 border-slate-400 checked:border-primary bg-slate-950/90 checkbox-sm cursor-pointer shadow-lg transition-all"
+                        className="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg transition-all"
                       />
                     </div>
                   )}
@@ -490,15 +504,15 @@ function AlbumDetailComponent() {
 
       {/* Selection Floating Bar */}
       {isSelecting && selectedItems.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 border border-slate-900 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
-          <div className="text-sm font-bold text-white">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
+          <div className="text-sm font-bold text-base-content">
             <span className="text-primary mr-1.5">{selectedItems.size}</span>
             {selectedItems.size === 1 ? "item" : "items"} selected
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedItems(new Set())}
-              className="btn btn-xs btn-ghost text-slate-400 hover:text-white font-medium"
+              className="btn btn-xs btn-ghost text-base-content/60 hover:text-base-content font-medium"
             >
               Clear
             </button>
@@ -523,7 +537,7 @@ function AlbumDetailComponent() {
                 setAlbumSearchQuery("");
                 modalRef.current?.close();
               }}
-              className="btn btn-sm btn-ghost text-slate-400 hover:text-white"
+              className="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
             >
               Cancel
             </button>
@@ -538,9 +552,9 @@ function AlbumDetailComponent() {
         }
       >
         <div className="space-y-4">
-          <p className="text-slate-400 text-xs leading-relaxed">
+          <p className="text-base-content/60 text-xs leading-relaxed">
             Choose the target album to move the{" "}
-            <span className="text-white font-bold">{selectedItems.size}</span>{" "}
+            <span className="text-base-content font-bold">{selectedItems.size}</span>{" "}
             selected media files to. This will physically move the files on disk
             and update their active catalog paths.
           </p>
@@ -551,12 +565,12 @@ function AlbumDetailComponent() {
               placeholder="Search albums..."
               value={albumSearchQuery}
               onChange={(e) => setAlbumSearchQuery(e.target.value)}
-              className="input input-bordered input-sm w-full bg-base-100/60 border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary/60 pr-8"
+              className="input input-bordered input-sm w-full bg-base-100/60 border-base-300 text-xs text-base-content placeholder-base-content/30 focus:outline-none focus:border-primary/60 pr-8"
             />
             {albumSearchQuery && (
               <button
                 onClick={() => setAlbumSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content text-xs"
               >
                 Clear
               </button>
@@ -570,8 +584,8 @@ function AlbumDetailComponent() {
                 onClick={() => setTargetAlbumId(alb.id)}
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
                   targetAlbumId === alb.id
-                    ? "bg-primary/10 border-primary/45 text-white"
-                    : "bg-base-100/40 border-slate-800/80 text-slate-300 hover:bg-base-100"
+                    ? "bg-primary/10 border-primary/45 text-base-content"
+                    : "bg-base-100/40 border-base-300/80 text-base-content/80 hover:bg-base-100"
                 }`}
               >
                 <input
@@ -581,16 +595,16 @@ function AlbumDetailComponent() {
                   onChange={() => setTargetAlbumId(alb.id)}
                   className="radio radio-primary radio-xs pointer-events-none"
                 />
-                <span className="font-bold text-xs text-white">
+                <span className="font-bold text-xs text-base-content">
                   {alb.name === "unknown" ? "Unsorted Media" : alb.name}
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono ml-auto">
+                <span className="text-[10px] text-base-content/40 font-mono ml-auto">
                   {alb.media_count} items
                 </span>
               </label>
             ))}
             {filteredAlbums.length === 0 && (
-              <p className="text-center text-slate-500 text-xs py-4">
+              <p className="text-center text-base-content/40 text-xs py-4">
                 No matching albums found.
               </p>
             )}

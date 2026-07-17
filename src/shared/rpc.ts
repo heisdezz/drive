@@ -188,7 +188,7 @@ export interface MainRPC extends ElectrobunRPCSchema {
 				};
 			};
 			getAlbumMedia: {
-				params: { drivePath: string; albumId: number; limit: number; offset: number };
+				params: { drivePath: string; albumId: number; limit: number; offset: number; search?: string };
 				response: {
 					items: {
 						id: number;

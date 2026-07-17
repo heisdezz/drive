@@ -63,8 +63,8 @@ function AlbumCover({ previewItem, drivePath, albumName }: AlbumCoverProps) {
   }
 
   return (
-    <div className="w-full h-full bg-gradient-to-br from-slate-900 to-slate-950 flex flex-col items-center justify-center text-slate-700 gap-2 border-b border-slate-900/50">
-      <Folder className="w-10 h-10 text-slate-600 group-hover:text-primary transition-colors duration-300" />
+    <div className="w-full h-full bg-gradient-to-br from-base-200 to-base-300 flex flex-col items-center justify-center gap-2 border-b border-base-200/50">
+      <Folder className="w-10 h-10 text-base-content/30 group-hover:text-primary transition-colors duration-300" />
     </div>
   );
 }
@@ -101,18 +101,18 @@ function AlbumsIndexComponent() {
   if (!selectedDrive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <Compass className="w-10 h-10 text-slate-500 group-hover:text-primary transition-colors duration-300" />
+          <Compass className="w-10 h-10 text-base-content/40 group-hover:text-primary transition-colors duration-300" />
         </div>
-        <h3 className="text-2xl font-black text-white mb-2">
+        <h3 className="text-2xl font-black text-base-content mb-2">
           No Drive Selected
         </h3>
-        <p className="text-slate-400 text-sm max-w-sm leading-relaxed mb-6">
+        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
           Please select a connected drive or storage volume from the sidebar to
           inspect cataloged albums.
         </p>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-slate-900 text-[10px] text-slate-500 font-medium">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-base-200 text-[10px] text-base-content/40 font-medium">
           <Info className="w-3.5 h-3.5" />
           Select a drive then scan it under the Discover tab.
         </div>
@@ -124,14 +124,14 @@ function AlbumsIndexComponent() {
   if (selectedDrive.status === "unmounted") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-base-100 border border-slate-800 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 to-transparent opacity-100 transition-opacity duration-300"></div>
-          <HardDrive className="w-10 h-10 text-slate-500 group-hover:text-amber-400 transition-colors duration-300 animate-pulse" />
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-tr from-warning/10 to-transparent opacity-100 transition-opacity duration-300"></div>
+          <HardDrive className="w-10 h-10 text-base-content/40 group-hover:text-warning transition-colors duration-300 animate-pulse" />
         </div>
-        <h3 className="text-2xl font-black text-white mb-2">
+        <h3 className="text-2xl font-black text-base-content mb-2">
           {selectedDrive.name} is Unmounted
         </h3>
-        <p className="text-slate-400 text-sm max-w-sm leading-relaxed mb-6">
+        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
           This storage device needs to be mounted before you can view its
           albums.
         </p>
@@ -182,16 +182,16 @@ function AlbumsIndexComponent() {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Drive Header */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900/60 to-slate-950/40 border border-slate-900 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-indigo-500 flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
-            <Library className="w-6 h-6 text-white" />
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
+            <Library className="w-6 h-6 text-primary-content" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white leading-tight">
+            <h2 className="text-xl font-black text-base-content leading-tight">
               Albums Gallery
             </h2>
-            <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">
+            <span className="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider">
               {selectedDrive.name} · {albums.length} Total Albums
             </span>
           </div>
@@ -199,27 +199,27 @@ function AlbumsIndexComponent() {
       </div>
 
       {/* Filter and Sort Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-slate-950/50 border border-slate-900 p-4 rounded-xl">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-base-300/50 border border-base-200 p-4 rounded-xl">
         <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40" />
           <input
             type="text"
             placeholder="Search albums..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-base-100/60 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-primary/60 transition-colors"
+            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-base-100/60 border border-base-300 text-base-content placeholder-base-content/30 focus:outline-none focus:border-primary/60 transition-colors"
           />
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-xs text-slate-400 mr-1 hidden sm:inline">
+          <ArrowUpDown className="w-3.5 h-3.5 text-base-content/40" />
+          <span className="text-xs text-base-content/60 mr-1 hidden sm:inline">
             Sort by:
           </span>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-slate-800 text-slate-300 focus:outline-none focus:border-primary/60"
+            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60"
           >
             <option value="name">Name (A-Z)</option>
             <option value="count">File Count</option>
@@ -232,15 +232,15 @@ function AlbumsIndexComponent() {
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[40vh] py-12">
           <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-xs text-slate-500 font-bold">
+          <p className="text-xs text-base-content/40 font-bold">
             Querying Albums Database...
           </p>
         </div>
       ) : filteredAlbums.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-slate-900/50">
-          <Library className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-          <h3 className="text-white font-bold">No Albums Found</h3>
-          <p className="text-slate-500 text-xs mt-1.5 max-w-sm mx-auto">
+        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
+          <Library className="w-12 h-12 text-base-content/20 mx-auto mb-4" />
+          <h3 className="text-base-content font-bold">No Albums Found</h3>
+          <p className="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
             {searchQuery
               ? "No albums match your search query."
               : "This drive doesn't have any albums indexed yet. Subdirectories containing media will appear here as albums after running a Discover scan."}
@@ -253,10 +253,10 @@ function AlbumsIndexComponent() {
               key={album.id}
               to="/album/$id"
               params={{ id: String(album.id) }}
-              className="group flex flex-col bg-slate-950/60 border border-slate-900 rounded-2xl overflow-hidden shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:border-slate-800 cursor-pointer"
+              className="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer"
             >
               {/* Cover area */}
-              <div className="aspect-[4/3] w-full relative overflow-hidden bg-slate-950 flex items-center justify-center">
+              <div className="aspect-[4/3] w-full relative overflow-hidden bg-base-300 flex items-center justify-center">
                 <AlbumCover
                   previewItem={album.preview_item}
                   drivePath={selectedDrive.path}
@@ -264,7 +264,7 @@ function AlbumsIndexComponent() {
                 />
 
                 {/* Count badge overlay */}
-                <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-slate-950/80 backdrop-blur-md border border-slate-900/80 flex items-center gap-1.5 text-[10px] font-bold text-white shadow-md">
+                <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200/80 flex items-center gap-1.5 text-[10px] font-bold text-base-content shadow-md">
                   <Layers className="w-3.5 h-3.5 text-primary" />
                   <span>{album.media_count} items</span>
                 </div>
@@ -273,15 +273,15 @@ function AlbumsIndexComponent() {
               {/* Title / details */}
               <div className="p-4 flex flex-col justify-between flex-grow">
                 <div>
-                  <h4 className="text-sm font-black text-white leading-tight group-hover:text-primary transition-colors truncate">
+                  <h4 className="text-sm font-black text-base-content leading-tight group-hover:text-primary transition-colors truncate">
                     {album.name === "unknown" ? "Unsorted Media" : album.name}
                   </h4>
-                  <span className="text-[10px] text-slate-500 font-mono block mt-1.5 truncate">
+                  <span className="text-[10px] text-base-content/40 font-mono block mt-1.5 truncate">
                     {album.relative_path}
                   </span>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-900/60 flex items-center justify-between text-[9px] text-slate-500 font-medium">
+                <div className="mt-4 pt-3 border-t border-base-200/60 flex items-center justify-between text-[9px] text-base-content/40 font-medium">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     {new Date(album.created_at).toLocaleDateString()}

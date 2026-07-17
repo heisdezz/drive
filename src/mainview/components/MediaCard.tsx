@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { Image as ImageIcon, Film as FilmIcon, Play } from "lucide-react";
+import { Image as ImageIcon, Film as FilmIcon, Play, Folder } from "lucide-react";
 
 export interface MediaItem {
   id: number;
@@ -24,7 +24,12 @@ interface MediaCardProps {
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
-export function MediaCard({ item, drivePath, albumId, onClick }: MediaCardProps) {
+export function MediaCard({
+  item,
+  drivePath,
+  albumId,
+  onClick,
+}: MediaCardProps) {
   const [hasError, setHasError] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
 
@@ -41,10 +46,10 @@ export function MediaCard({ item, drivePath, albumId, onClick }: MediaCardProps)
       params={{ id: String(item.id) }}
       search={albumId ? { albumId } : undefined}
       onClick={onClick}
-      className="group relative rounded-2xl overflow-hidden bg-slate-950/60 border border-slate-900 shadow-lg aspect-square flex flex-col justify-end transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:border-slate-800 cursor-pointer"
+      className="group relative rounded-2xl overflow-hidden bg-base-300/60 border border-base-200 shadow-lg aspect-square flex flex-col justify-end transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:border-base-300 cursor-pointer"
     >
       {/* Media content */}
-      <div className="absolute inset-0 flex items-center justify-center bg-slate-950">
+      <div className="absolute inset-0 flex items-center justify-center bg-base-300">
         {!hasError ? (
           <img
             src={thumbUrl}
@@ -54,7 +59,7 @@ export function MediaCard({ item, drivePath, albumId, onClick }: MediaCardProps)
             loading="lazy"
           />
         ) : (
-          <div className="flex flex-col items-center justify-center text-slate-700 gap-2">
+          <div className="flex flex-col items-center justify-center text-base-content/30 gap-2">
             {isVideo ? (
               <FilmIcon className="w-8 h-8" />
             ) : (
@@ -67,22 +72,30 @@ export function MediaCard({ item, drivePath, albumId, onClick }: MediaCardProps)
         )}
       </div>
 
-      {/* Video duration/type badge */}
+      {/* Video type badge */}
       {isVideo && (
-        <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-slate-950/80 backdrop-blur-md border border-slate-900 flex items-center gap-1 text-[9px] font-bold text-white shadow-md">
+        <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md">
           <Play className="w-2.5 h-2.5 text-secondary fill-secondary" /> VIDEO
         </div>
       )}
 
+      {/* Album Badge */}
+      {item.album_name && (
+        <div className="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[70%] group-hover:opacity-0 transition-opacity duration-200 flex items-center gap-1">
+          <Folder className="w-2.5 h-2.5 text-primary fill-primary/10" />
+          <span className="truncate">{item.album_name === "unknown" ? "Unsorted Media" : item.album_name}</span>
+        </div>
+      )}
+
       {/* Info overlay (visible on hover) */}
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/25 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+      <div className="absolute inset-0 bg-gradient-to-t from-base-300 via-base-300/25 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
         <h4
-          className="text-xs font-black text-white truncate leading-tight mb-1"
+          className="text-xs font-black text-base-content truncate leading-tight mb-1"
           title={fileName}
         >
           {fileName}
         </h4>
-        <div className="flex items-center justify-between text-[9px] text-slate-400 font-medium">
+        <div className="flex items-center justify-between text-[9px] text-base-content/60 font-medium">
           <span>{(item.file_size / 1024 / 1024).toFixed(2)} MB</span>
           <span>{new Date(item.created_at).toLocaleDateString()}</span>
         </div>

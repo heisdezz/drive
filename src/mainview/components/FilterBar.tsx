@@ -17,12 +17,10 @@ export function FilterBar({
 }: FilterBarProps) {
   const [localSearch, setLocalSearch] = useState(searchQuery);
 
-  // Sync local input state with query param if it changes externally
   useEffect(() => {
     setLocalSearch(searchQuery);
   }, [searchQuery]);
 
-  // Debounce the change callback
   const debouncedSearch = useDebouncedCallback((val: string) => {
     onSearchChange(val);
   }, 500);
@@ -35,29 +33,29 @@ export function FilterBar({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    debouncedSearch.cancel(); // Cancel any pending debounced search
+    debouncedSearch.cancel();
     onSearchChange(localSearch);
   };
 
   return (
-    <div className="p-4 rounded-xl bg-base-100/40 border border-slate-900/80 flex flex-col md:flex-row gap-3 items-center justify-between">
+    <div className="p-4 rounded-xl bg-base-100/40 border border-base-200/80 flex flex-col md:flex-row gap-3 items-center justify-between">
       {/* File Type Filter Tabs */}
-      <div className="tabs tabs-boxed bg-slate-950 border border-slate-900/50 p-0.5">
+      <div className="tabs tabs-boxed bg-base-300 border border-base-200/50 p-0.5">
         <button
           onClick={() => onFilterChange("all")}
-          className={`tab tab-sm font-bold rounded-lg ${filterType === "all" ? "tab-active text-white bg-base-100" : "text-slate-400"}`}
+          className={`tab tab-sm font-bold rounded-lg ${filterType === "all" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
         >
           All
         </button>
         <button
           onClick={() => onFilterChange("images")}
-          className={`tab tab-sm font-bold rounded-lg ${filterType === "images" ? "tab-active text-white bg-base-100" : "text-slate-400"}`}
+          className={`tab tab-sm font-bold rounded-lg ${filterType === "images" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
         >
           Photos
         </button>
         <button
           onClick={() => onFilterChange("videos")}
-          className={`tab tab-sm font-bold rounded-lg ${filterType === "videos" ? "tab-active text-white bg-base-100" : "text-slate-400"}`}
+          className={`tab tab-sm font-bold rounded-lg ${filterType === "videos" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
         >
           Videos
         </button>
@@ -66,7 +64,7 @@ export function FilterBar({
       {/* Search Field with Button */}
       <form
         onSubmit={handleSubmit}
-        className="flex w-full md:w-80 items-center join bg-slate-950 border border-slate-900/80 focus-within:border-primary/60 rounded-xl overflow-hidden transition-colors"
+        className="flex w-full md:w-80 items-center join bg-base-300 border border-base-200/80 focus-within:border-primary/60 rounded-xl overflow-hidden transition-colors"
       >
         <div className="relative flex-grow">
           <input
@@ -74,9 +72,9 @@ export function FilterBar({
             placeholder="Search media files..."
             value={localSearch}
             onChange={handleChange}
-            className="input input-sm w-full bg-transparent border-none text-xs focus:outline-none focus:ring-0 text-white pl-8 h-8"
+            className="input input-sm w-full bg-transparent border-none text-xs focus:outline-none focus:ring-0 text-base-content pl-8 h-8"
           />
-          <Search className="w-3.5 h-3.5 text-slate-600 absolute left-2.5 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-base-content/30 absolute left-2.5 top-2.5" />
         </div>
         <button
           type="submit"

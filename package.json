@@ -21,6 +21,7 @@
 		"lucide-react": "^1.24.0",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1",
+		"react-hook-form": "^7.81.0",
 		"sharp": "^0.35.3",
 		"systeminformation": "^5.31.17",
 		"use-debounce": "^10.1.1",

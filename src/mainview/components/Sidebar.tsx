@@ -45,9 +45,9 @@ export default function Sidebar() {
       <div className="p-4 flex items-center justify-between border-b border-base-300 bg-base-100/50">
         <div className="flex items-center gap-2.5">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/20">
-            <Zap className="w-3.5 h-3.5 text-white fill-white" />
+            <Zap className="w-3.5 h-3.5 text-primary-content fill-primary-content" />
           </div>
-          <span className="font-extrabold text-sm tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary via-indigo-400 to-secondary">
+          <span className="font-extrabold text-sm tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-secondary">
             Antigravity Drive
           </span>
         </div>
@@ -57,7 +57,7 @@ export default function Sidebar() {
       <div className="flex-grow overflow-y-auto p-3 space-y-6">
         {/* Navigation Section */}
         <div className="space-y-2">
-          <span className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest block">
+          <span className="px-3 text-[9px] font-black text-base-content/40 uppercase tracking-widest block">
             Application
           </span>
           <nav className="flex flex-col gap-1">
@@ -65,11 +65,11 @@ export default function Sidebar() {
               to="/"
               activeProps={{
                 className:
-                  "bg-slate-800 text-white font-bold border-l-2 border-primary pl-3.5",
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
               }}
               inactiveProps={{
                 className:
-                  "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 pl-4",
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
@@ -79,11 +79,11 @@ export default function Sidebar() {
               to="/discover"
               activeProps={{
                 className:
-                  "bg-slate-800 text-white font-bold border-l-2 border-primary pl-3.5",
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
               }}
               inactiveProps={{
                 className:
-                  "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 pl-4",
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
@@ -93,11 +93,11 @@ export default function Sidebar() {
               to="/medias"
               activeProps={{
                 className:
-                  "bg-slate-800 text-white font-bold border-l-2 border-primary pl-3.5",
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
               }}
               inactiveProps={{
                 className:
-                  "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 pl-4",
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
@@ -107,11 +107,11 @@ export default function Sidebar() {
               to="/albums"
               activeProps={{
                 className:
-                  "bg-slate-800 text-white font-bold border-l-2 border-primary pl-3.5",
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
               }}
               inactiveProps={{
                 className:
-                  "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 pl-4",
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
@@ -121,11 +121,11 @@ export default function Sidebar() {
               to="/counter"
               activeProps={{
                 className:
-                  "bg-slate-800 text-white font-bold border-l-2 border-primary pl-3.5",
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
               }}
               inactiveProps={{
                 className:
-                  "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 pl-4",
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
@@ -135,11 +135,11 @@ export default function Sidebar() {
               to="/about"
               activeProps={{
                 className:
-                  "bg-slate-800 text-white font-bold border-l-2 border-primary pl-3.5",
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
               }}
               inactiveProps={{
                 className:
-                  "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 pl-4",
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
@@ -151,14 +151,14 @@ export default function Sidebar() {
         {/* Drives Section */}
         <div className="space-y-3.5">
           <div className="px-3 flex items-center justify-between">
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+            <span className="text-[9px] font-black text-base-content/40 uppercase tracking-widest">
               Connected Drives
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={fetchDrives}
                 disabled={loading}
-                className="hover:text-white text-slate-500 transition-colors cursor-pointer"
+                className="hover:text-base-content text-base-content/40 transition-colors cursor-pointer"
                 title="Refresh drive list"
               >
                 <RefreshCw
@@ -174,13 +174,13 @@ export default function Sidebar() {
           <div className="space-y-2">
             {loading && devices.length === 0 ? (
               <div className="px-3 py-4 text-center">
-                <span className="loading loading-spinner loading-xs text-slate-500"></span>
-                <p className="text-[10px] text-slate-600 mt-1.5">
+                <span className="loading loading-spinner loading-xs text-base-content/40"></span>
+                <p className="text-[10px] text-base-content/30 mt-1.5">
                   Scanning filesystems...
                 </p>
               </div>
             ) : devices.length === 0 ? (
-              <div className="px-3 py-4 text-center text-[10px] text-slate-500 italic">
+              <div className="px-3 py-4 text-center text-[10px] text-base-content/40 italic">
                 No drives detected.
               </div>
             ) : (
@@ -195,35 +195,35 @@ export default function Sidebar() {
                     }}
                     className={`p-3 rounded-xl transition-all duration-150 flex flex-col gap-2 border ${
                       isSystemRoot
-                        ? "opacity-40 cursor-not-allowed border-slate-900 bg-slate-950/20"
+                        ? "opacity-40 cursor-not-allowed border-base-200 bg-base-300/20"
                         : selectedDrive?.id === device.id
-                          ? "bg-slate-950/85 border-primary shadow-lg shadow-primary/10 ring-1 ring-primary/30 cursor-pointer"
-                          : "bg-slate-950/40 border-base-300 hover:bg-slate-950/70 hover:border-slate-900 cursor-pointer"
+                          ? "bg-base-300/85 border-primary shadow-lg shadow-primary/10 ring-1 ring-primary/30 cursor-pointer"
+                          : "bg-base-300/40 border-base-300 hover:bg-base-300/70 hover:border-base-200 cursor-pointer"
                     }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2 text-xs">
                         {device.type === "internal" ? (
-                          <HardDrive className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                          <HardDrive className="w-3.5 h-3.5 text-info flex-shrink-0" />
                         ) : device.type === "external" ? (
-                          <Usb className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                          <Usb className="w-3.5 h-3.5 text-success flex-shrink-0" />
                         ) : (
-                          <Globe className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                          <Globe className="w-3.5 h-3.5 text-secondary flex-shrink-0" />
                         )}
                         <div
                           className="truncate max-w-[120px]"
                           title={device.name}
                         >
-                          <h4 className="font-bold text-white leading-tight truncate">
+                          <h4 className="font-bold text-base-content leading-tight truncate">
                             {device.name}
                           </h4>
-                          <span className="text-[9px] text-slate-500 uppercase font-semibold">
+                          <span className="text-[9px] text-base-content/40 uppercase font-semibold">
                             {device.size}
                           </span>
                         </div>
                       </div>
                       {isSystemRoot ? (
-                        <span className="badge badge-xs text-[8px] bg-slate-800 text-slate-400 border border-slate-700 leading-none px-1.5 py-0.5 uppercase font-bold">
+                        <span className="badge badge-xs text-[8px] bg-neutral text-neutral-content border border-base-content/20 leading-none px-1.5 py-0.5 uppercase font-bold">
                           System
                         </span>
                       ) : (
@@ -232,7 +232,7 @@ export default function Sidebar() {
                             device.status === "mounted"
                               ? "badge-success text-[8px]"
                               : device.status === "unmounted"
-                                ? "text-[8px] bg-slate-700 text-slate-400 border border-slate-600"
+                                ? "text-[8px] bg-neutral text-neutral-content border border-base-content/20"
                                 : "badge-info text-[8px] animate-pulse"
                           }`}
                         >
@@ -253,7 +253,7 @@ export default function Sidebar() {
                         value={device.usedPercentage}
                         max="100"
                       ></progress>
-                      <div className="flex justify-between text-[8px] font-mono text-slate-500">
+                      <div className="flex justify-between text-[8px] font-mono text-base-content/40">
                         <span>{device.usedPercentage}% used</span>
                         <span>{device.size}</span>
                       </div>

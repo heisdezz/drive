@@ -1,0 +1,8 @@
+node_modules/
+build/
+dist/
+artifacts/
+.tanstack/
+.electrobun/
+.agents/
+*.tsbuildinfo

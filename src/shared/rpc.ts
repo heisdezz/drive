@@ -188,7 +188,7 @@ export interface MainRPC extends ElectrobunRPCSchema {
 				};
 			};
 			getAlbumMedia: {
-				params: { drivePath: string; albumId: number; limit: number; offset: number; search?: string };
+				params: { drivePath: string; albumId: number; limit: number; offset: number; search?: string; filter?: "all" | "images" | "videos" };
 				response: {
 					items: {
 						id: number;
@@ -230,6 +230,39 @@ export interface MainRPC extends ElectrobunRPCSchema {
 						description: string | null;
 						created_at: string;
 					};
+					error?: string;
+				};
+			};
+			editAlbum: {
+				params: {
+					drivePath: string;
+					albumId: number;
+					newName: string;
+					newDescription?: string;
+				};
+				response: {
+					success: boolean;
+					error?: string;
+				};
+			};
+			deleteAlbum: {
+				params: {
+					drivePath: string;
+					albumId: number;
+				};
+				response: {
+					success: boolean;
+					error?: string;
+				};
+			};
+			deleteMediaItems: {
+				params: {
+					drivePath: string;
+					mediaIds: number[];
+				};
+				response: {
+					success: boolean;
+					deletedCount: number;
 					error?: string;
 				};
 			};

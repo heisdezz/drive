@@ -1,6 +1,13 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo, useCallback, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
-import { Image as ImageIcon, Film as FilmIcon, Play, Folder } from "lucide-react";
+import {
+  Image as ImageIcon,
+  Film as FilmIcon,
+  Play,
+  Folder,
+} from "lucide-react";
+import { useSelectionStore } from "@/store/selection_store";
+import { useShallow } from "zustand/shallow";
 
 export interface MediaItem {
   id: number;
@@ -24,12 +31,19 @@ interface MediaCardProps {
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
-export function MediaCard({
+export const MediaCard = memo(function MediaCard({
   item,
   drivePath,
   albumId,
   onClick,
 }: MediaCardProps) {
+  const { isSelecting, isSelected } = useSelectionStore(
+    useShallow((s) => ({
+      isSelecting: s.isSelecting,
+      isSelected: s.selected.has(item.id),
+    })),
+  );
+
   const [hasError, setHasError] = useState(false);
   const [inView, setInView] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
@@ -44,17 +58,42 @@ export function MediaCard({
           observer.disconnect();
         }
       },
-      { rootMargin: "300px" }
+      { rootMargin: "300px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  const isVideo = item.mime_type.startsWith("video");
-  const fileName =
-    item.original_relative_path.split("/").pop() || item.original_relative_path;
+  const isVideo = useMemo(
+    () => item.mime_type.startsWith("video"),
+    [item.mime_type],
+  );
 
-  const thumbUrl = `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(item.current_relative_path)}&fileHash=${item.file_hash}`;
+  const fileName = useMemo(
+    () =>
+      item.original_relative_path.split("/").pop() ||
+      item.original_relative_path,
+    [item.original_relative_path],
+  );
+
+  const thumbUrl = useMemo(
+    () =>
+      `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(item.current_relative_path)}&fileHash=${item.file_hash}`,
+    [drivePath, item.current_relative_path, item.file_hash],
+  );
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (isSelecting) {
+        e.preventDefault();
+        e.stopPropagation();
+        useSelectionStore.getState().toggle(item.id);
+      } else if (onClick) {
+        onClick(e);
+      }
+    },
+    [isSelecting, item.id, onClick],
+  );
 
   return (
     <Link
@@ -62,8 +101,12 @@ export function MediaCard({
       to="/item/$id"
       params={{ id: String(item.id) }}
       search={albumId ? { albumId } : undefined}
-      onClick={onClick}
-      className="group relative rounded-2xl overflow-hidden bg-base-300/60 border border-base-200 shadow-lg aspect-square flex flex-col justify-end transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:border-base-300 cursor-pointer"
+      onClick={handleClick}
+      className={`group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl cursor-pointer ${
+        isSelected
+          ? "ring-2 ring-primary border-primary"
+          : "border-base-200 hover:border-base-300"
+      }`}
     >
       {/* Media content */}
       <div className="absolute inset-0 flex items-center justify-center bg-base-300">
@@ -93,17 +136,35 @@ export function MediaCard({
       {/* Media type badge — top right */}
       <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md">
         {isVideo ? (
-          <><Play className="w-2.5 h-2.5 text-secondary fill-secondary" /> VIDEO</>
+          <>
+            <Play className="w-2.5 h-2.5 text-secondary fill-secondary" /> VIDEO
+          </>
         ) : (
-          <><ImageIcon className="w-2.5 h-2.5 text-info" /> IMAGE</>
+          <>
+            <ImageIcon className="w-2.5 h-2.5 text-info" /> IMAGE
+          </>
         )}
       </div>
 
+      {/* Selection checkbox */}
+      {isSelecting && (
+        <div className="absolute top-3 left-3 z-30">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            readOnly
+            className="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg transition-all"
+          />
+        </div>
+      )}
+
       {/* Album badge — top left, fades on hover */}
-      {item.album_name && (
+      {item.album_name && !isSelecting && (
         <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] group-hover:opacity-0 transition-opacity duration-200 flex items-center gap-1">
           <Folder className="w-2.5 h-2.5 text-primary fill-primary/10 shrink-0" />
-          <span className="truncate">{item.album_name === "unknown" ? "Unsorted Media" : item.album_name}</span>
+          <span className="truncate">
+            {item.album_name === "unknown" ? "Unsorted Media" : item.album_name}
+          </span>
         </div>
       )}
 
@@ -122,4 +183,4 @@ export function MediaCard({
       </div>
     </Link>
   );
-}
+});

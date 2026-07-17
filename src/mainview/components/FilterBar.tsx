@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { Search } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 
@@ -9,7 +9,7 @@ interface FilterBarProps {
   onFilterChange: (filter: "all" | "images" | "videos") => void;
 }
 
-export function FilterBar({
+export const FilterBar = memo(function FilterBar({
   searchQuery,
   onSearchChange,
   filterType,
@@ -85,4 +85,4 @@ export function FilterBar({
       </form>
     </div>
   );
-}
+});

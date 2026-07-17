@@ -95,6 +95,7 @@ function Index() {
   const [scanStatus, setScanStatus] = useState<any>(null);
   const [mediaItems, setMediaItems] = useState<any[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [totalMedia, setTotalMedia] = useState(0);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [loadingAlbums, setLoadingAlbums] = useState(false);
 
@@ -114,6 +115,7 @@ function Index() {
         });
         if (active && mediaRes && !mediaRes.error) {
           setMediaItems(mediaRes.items || []);
+          setTotalMedia(mediaRes.total || 0);
         }
 
         const albumsRes = await rpc.request.getAlbums({
@@ -149,6 +151,7 @@ function Index() {
             });
             if (active && freshMedia && !freshMedia.error) {
               setMediaItems(freshMedia.items || []);
+              setTotalMedia(freshMedia.total || 0);
             }
             const freshAlbums = await rpc.request.getAlbums({
               drivePath: selectedDrive.path,
@@ -191,6 +194,7 @@ function Index() {
       });
       if (mediaRes && !mediaRes.error) {
         setMediaItems(mediaRes.items || []);
+        setTotalMedia(mediaRes.total || 0);
       }
 
       const albumsRes = await rpc.request.getAlbums({
@@ -220,6 +224,43 @@ function Index() {
       console.error("Mount failed:", err);
     }
   };
+
+  // Case 2: Selected drive is unmounted
+  if (selectedDrive && selectedDrive.status === "unmounted") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
+        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-tr from-warning/10 to-transparent opacity-100 transition-opacity duration-300" />
+          <HardDrive className="w-10 h-10 text-base-content/40 group-hover:text-warning transition-colors duration-300 animate-pulse" />
+        </div>
+        <h3 className="text-2xl font-black text-base-content mb-2">
+          {selectedDrive.name} is Unmounted
+        </h3>
+        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
+          This storage device needs to be mounted before you can view its albums.
+        </p>
+        <button
+          onClick={async () => {
+            try {
+              const res = await rpc.request.mountBlockDevice({
+                deviceId: selectedDrive.id,
+              });
+              if (res.success && res.mountPath) {
+                await fetchDrives();
+              } else {
+                alert(`Failed to mount: ${res.error}`);
+              }
+            } catch (err: any) {
+              console.error(err);
+            }
+          }}
+          className="btn btn-primary btn-sm font-bold shadow-lg shadow-primary/25 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+        >
+          Mount Drive
+        </button>
+      </div>
+    );
+  }
 
   // 1. Render empty state (select a drive)
   if (!selectedDrive) {
@@ -443,6 +484,50 @@ function Index() {
             >
               <Power className="w-3.5 h-3.5" />
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Panel */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="p-5 rounded-2xl bg-base-300/40 border border-base-200 shadow-md flex items-center gap-4 animate-fade-in">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <ImageIcon className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-base-content/40 uppercase tracking-wider">Total Media Items</span>
+            <span className="text-xl font-extrabold text-base-content mt-0.5 block">{totalMedia}</span>
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-base-300/40 border border-base-200 shadow-md flex items-center gap-4 animate-fade-in">
+          <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary">
+            <Folder className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-base-content/40 uppercase tracking-wider">Total Albums</span>
+            <span className="text-xl font-extrabold text-base-content mt-0.5 block">{albums.length}</span>
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-base-300/40 border border-base-200 shadow-md flex flex-col justify-center gap-2 animate-fade-in">
+          <div className="flex items-center justify-between text-[10px] font-bold text-base-content/40 uppercase tracking-wider">
+            <span>Storage Used</span>
+            <span className="font-mono text-base-content">{selectedDrive.usedPercentage}%</span>
+          </div>
+          <progress
+            className={`progress progress-xs w-full h-2 rounded-full ${
+              selectedDrive.usedPercentage > 80
+                ? "progress-error"
+                : selectedDrive.usedPercentage > 50
+                  ? "progress-primary"
+                  : "progress-success"
+            }`}
+            value={selectedDrive.usedPercentage}
+            max="100"
+          />
+          <div className="flex justify-between text-[9px] font-mono text-base-content/40">
+            <span>{selectedDrive.size} total capacity</span>
           </div>
         </div>
       </div>

@@ -242,17 +242,40 @@ export default function Sidebar() {
                           System
                         </span>
                       ) : (
-                        <span
-                          className={`badge badge-xs capitalize leading-none px-1.5 py-0.5 ${
-                            device.status === "mounted"
-                              ? "badge-success text-[8px]"
-                              : device.status === "unmounted"
-                                ? "text-[8px] bg-neutral text-neutral-content border border-base-content/20"
-                                : "badge-info text-[8px] animate-pulse"
-                          }`}
-                        >
-                          {device.status}
-                        </span>
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {device.status === "unmounted" ? (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  const res = await rpc.request.mountBlockDevice({
+                                    deviceId: device.id,
+                                  });
+                                  if (res.success && res.mountPath) {
+                                    await fetchDrives();
+                                  } else {
+                                    alert(`Failed to mount: ${res.error}`);
+                                  }
+                                } catch (err: any) {
+                                  console.error(err);
+                                }
+                              }}
+                              className="btn btn-primary btn-[9px] btn-xs h-5 min-h-0 font-bold px-1.5 cursor-pointer hover:scale-105"
+                            >
+                              Mount
+                            </button>
+                          ) : (
+                            <span
+                              className={`badge badge-xs capitalize leading-none px-1.5 py-0.5 ${
+                                device.status === "mounted"
+                                  ? "badge-success text-[8px]"
+                                  : "badge-info text-[8px] animate-pulse"
+                              }`}
+                            >
+                              {device.status}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 

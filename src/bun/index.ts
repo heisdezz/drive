@@ -1357,8 +1357,8 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					db?.close();
 				}
 			},
-			getAlbumMedia: async ({ drivePath, albumId, limit, offset, search }) => {
-				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}, search: ${search}`);
+			getAlbumMedia: async ({ drivePath, albumId, limit, offset, search, filter }) => {
+				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}, search: ${search}, filter: ${filter}`);
 				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
@@ -1366,40 +1366,40 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 						return { items: [], total: 0 };
 					}
 					db = openReadableDb(dbPath);
-					let items: any[] = [];
-					let totalCount = 0;
 					
+					let sql = `
+						SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
+						FROM media_items m
+						LEFT JOIN albums a ON m.album_id = a.id
+						WHERE m.album_id = ?
+					`;
+					let countSql = "SELECT count(*) as count FROM media_items WHERE album_id = ?";
+					const params: any[] = [albumId];
+
 					if (search) {
-						const searchPattern = `%${search}%`;
-						items = db.prepare(`
-							SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
-							FROM media_items m
-							LEFT JOIN albums a ON m.album_id = a.id
-							WHERE m.album_id = ? AND m.original_relative_path LIKE ?
-							ORDER BY m.created_at DESC 
-							LIMIT ? OFFSET ?
-						`).all(albumId, searchPattern, limit, offset) as any[];
-						
-						const totalResult = db.prepare(`
-							SELECT count(*) as count FROM media_items 
-							WHERE album_id = ? AND original_relative_path LIKE ?
-						`).get(albumId, searchPattern) as { count: number };
-						totalCount = totalResult.count;
-					} else {
-						items = db.prepare(`
-							SELECT m.*, a.name AS album_name, a.relative_path AS album_relative_path
-							FROM media_items m
-							LEFT JOIN albums a ON m.album_id = a.id
-							WHERE m.album_id = ? 
-							ORDER BY m.created_at DESC 
-							LIMIT ? OFFSET ?
-						`).all(albumId, limit, offset) as any[];
-						
-						const totalResult = db.prepare("SELECT count(*) as count FROM media_items WHERE album_id = ?").get(albumId) as { count: number };
-						totalCount = totalResult.count;
+						sql += " AND (m.original_relative_path LIKE ? OR m.current_relative_path LIKE ?)";
+						countSql += " AND (original_relative_path LIKE ? OR current_relative_path LIKE ?)";
+						const term = `%${search}%`;
+						params.push(term, term);
 					}
+
+					if (filter === "images") {
+						sql += " AND m.mime_type LIKE 'image/%'";
+						countSql += " AND mime_type LIKE 'image/%'";
+					} else if (filter === "videos") {
+						sql += " AND m.mime_type LIKE 'video/%'";
+						countSql += " AND mime_type LIKE 'video/%'";
+					}
+
+					sql += " ORDER BY m.created_at DESC LIMIT ? OFFSET ?";
 					
-					return { items, total: totalCount };
+					const countParams = [...params];
+					params.push(limit, offset);
+
+					const items = db.prepare(sql).all(...params) as any[];
+					const totalResult = db.prepare(countSql).get(...countParams) as { count: number };
+					
+					return { items, total: totalResult.count };
 				} catch (err: any) {
 					addLog("error", `Failed to query album media items: ${err.message}`, err.stack);
 					return { items: [], total: 0, error: err.message };
@@ -1558,6 +1558,233 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 				} catch (err: any) {
 					addLog("error", `Failed to create album: ${err.message}`, err.stack);
 					return { success: false, error: err.message };
+				} finally {
+					db?.close();
+				}
+			},
+			editAlbum: async ({ drivePath, albumId, newName, newDescription }) => {
+				addLog("info", `RPC Request: editAlbum invoked`, `albumId: ${albumId}, newName: ${newName}`);
+				let db: Database | null = null;
+				try {
+					const dbPath = path.join(drivePath, "albums", ".media_library.db");
+					if (!fs.existsSync(dbPath)) {
+						throw new Error("Library database not found");
+					}
+
+					assertWritable(drivePath);
+					db = getDatabaseConnection(dbPath);
+
+					// 1. Get current album details
+					const album = db.prepare("SELECT * FROM albums WHERE id = ?").get(albumId) as { name: string } | undefined;
+					if (!album) {
+						throw new Error(`Album with ID ${albumId} not found`);
+					}
+
+					// 2. Prevent renaming "unknown" album
+					const cleanName = newName?.trim();
+					if (album.name === "unknown" && cleanName && cleanName !== "unknown") {
+						throw new Error("Cannot rename the default unsorted album.");
+					}
+
+					// 3. Validate new name
+					if (!cleanName || cleanName === "" || cleanName.includes("/") || cleanName.includes("\\") || cleanName.includes("..")) {
+						throw new Error("Invalid album name. Names cannot be empty and cannot contain path traversal or slashes.");
+					}
+
+					db.run("BEGIN TRANSACTION;");
+					try {
+						if (album.name !== cleanName) {
+							// Check if new name already exists
+							const existing = db.prepare("SELECT * FROM albums WHERE name = ? AND id != ?").get(cleanName, albumId);
+							if (existing) {
+								throw new Error(`An album with the name '${cleanName}' already exists.`);
+							}
+
+							// Rename physical directory on disk
+							const oldDirPath = path.join(drivePath, "albums", album.name);
+							const newDirPath = path.join(drivePath, "albums", cleanName);
+							if (fs.existsSync(oldDirPath) && oldDirPath !== newDirPath) {
+								await fs.promises.rename(oldDirPath, newDirPath);
+							}
+
+							// Update all media items inside this album
+							const items = db.prepare("SELECT id, current_relative_path FROM media_items WHERE album_id = ?").all(albumId) as { id: number; current_relative_path: string }[];
+							for (const item of items) {
+								const filename = path.basename(item.current_relative_path);
+								const newRelativePath = `albums/${cleanName}/${filename}`;
+								db.prepare("UPDATE media_items SET current_relative_path = ? WHERE id = ?").run(newRelativePath, item.id);
+							}
+
+							// Update album details in database
+							const relativePath = `albums/${cleanName}`;
+							db.prepare(`
+								UPDATE albums 
+								SET name = ?, relative_path = ?, description = ? 
+								WHERE id = ?
+							`).run(cleanName, relativePath, newDescription || null, albumId);
+						} else {
+							// Update only description
+							db.prepare(`
+								UPDATE albums 
+								SET description = ? 
+								WHERE id = ?
+							`).run(newDescription || null, albumId);
+						}
+						db.run("COMMIT;");
+					} catch (transactionErr) {
+						db.run("ROLLBACK;");
+						throw transactionErr;
+					}
+
+					addLog("info", `Successfully updated album ${album.name} to ${cleanName}`);
+					return { success: true };
+				} catch (err: any) {
+					addLog("error", `Failed to edit album: ${err.message}`, err.stack);
+					return { success: false, error: err.message };
+				} finally {
+					db?.close();
+				}
+			},
+			deleteAlbum: async ({ drivePath, albumId }) => {
+				addLog("info", `RPC Request: deleteAlbum invoked`, `albumId: ${albumId}`);
+				let db: Database | null = null;
+				try {
+					const dbPath = path.join(drivePath, "albums", ".media_library.db");
+					if (!fs.existsSync(dbPath)) {
+						throw new Error("Library database not found");
+					}
+
+					assertWritable(drivePath);
+					db = getDatabaseConnection(dbPath);
+
+					// 1. Get current album details
+					const album = db.prepare("SELECT * FROM albums WHERE id = ?").get(albumId) as { name: string } | undefined;
+					if (!album) {
+						throw new Error(`Album with ID ${albumId} not found`);
+					}
+
+					// 2. Prevent deleting "unknown" album
+					if (album.name === "unknown") {
+						throw new Error("Cannot delete the default unsorted album.");
+					}
+
+					// 3. Find or create the fallback 'unknown' album
+					let fallbackAlbum = db.prepare("SELECT * FROM albums WHERE name = 'unknown'").get() as { id: number; name: string } | undefined;
+					if (!fallbackAlbum) {
+						const relativePath = "albums/unknown";
+						const insertRes = db.prepare(`
+							INSERT INTO albums (name, relative_path, description)
+							VALUES ('unknown', ?, 'Unsorted media items')
+						`).run(relativePath);
+						fallbackAlbum = { id: insertRes.lastInsertRowid as number, name: "unknown" };
+					}
+
+					const fallbackDir = path.join(drivePath, "albums", "unknown");
+					await fs.promises.mkdir(fallbackDir, { recursive: true });
+
+					db.run("BEGIN TRANSACTION;");
+					try {
+						// 4. Move all media files back to 'unknown'
+						const items = db.prepare("SELECT * FROM media_items WHERE album_id = ?").all(albumId) as { id: number; current_relative_path: string }[];
+						for (const item of items) {
+							const currentFullPath = path.join(drivePath, item.current_relative_path);
+							if (fs.existsSync(currentFullPath)) {
+								const filename = path.basename(item.current_relative_path);
+								const ext = path.extname(filename);
+								const base = path.basename(filename, ext);
+
+								let targetFullPath = path.join(fallbackDir, filename);
+								let finalFilename = filename;
+								if (fs.existsSync(targetFullPath)) {
+									let counter = 1;
+									while (fs.existsSync(path.join(fallbackDir, `${base}_${counter}${ext}`))) {
+										counter++;
+									}
+									finalFilename = `${base}_${counter}${ext}`;
+									targetFullPath = path.join(fallbackDir, finalFilename);
+								}
+
+								await moveFile(currentFullPath, targetFullPath);
+								const newRelativePath = path.relative(drivePath, targetFullPath);
+								db.prepare(`
+									UPDATE media_items 
+									SET album_id = ?, current_relative_path = ? 
+									WHERE id = ?
+								`).run(fallbackAlbum.id, newRelativePath, item.id);
+							} else {
+								db.prepare("UPDATE media_items SET album_id = ? WHERE id = ?").run(fallbackAlbum.id, item.id);
+							}
+						}
+
+						// 5. Delete empty target album folder on disk
+						const targetDir = path.join(drivePath, "albums", album.name);
+						if (fs.existsSync(targetDir)) {
+							await fs.promises.rm(targetDir, { recursive: true, force: true });
+						}
+
+						// 6. Delete album record
+						db.prepare("DELETE FROM albums WHERE id = ?").run(albumId);
+						db.run("COMMIT;");
+					} catch (transactionErr) {
+						db.run("ROLLBACK;");
+						throw transactionErr;
+					}
+
+					addLog("info", `Successfully deleted album ID ${albumId} (${album.name}) and moved items to unsorted`);
+					return { success: true };
+				} catch (err: any) {
+					addLog("error", `Failed to delete album: ${err.message}`, err.stack);
+					return { success: false, error: err.message };
+				} finally {
+					db?.close();
+				}
+			},
+			deleteMediaItems: async ({ drivePath, mediaIds }) => {
+				addLog("info", `RPC Request: deleteMediaItems invoked`, `mediaIds count: ${mediaIds.length}`);
+				let db: Database | null = null;
+				try {
+					const dbPath = path.join(drivePath, "albums", ".media_library.db");
+					if (!fs.existsSync(dbPath)) {
+						throw new Error("Library database not found");
+					}
+
+					assertWritable(drivePath);
+					db = getDatabaseConnection(dbPath);
+
+					let deletedCount = 0;
+					db.run("BEGIN TRANSACTION;");
+					try {
+						for (const id of mediaIds) {
+							const item = db.prepare("SELECT * FROM media_items WHERE id = ?").get(id) as { current_relative_path: string; file_hash: string } | undefined;
+							if (!item) continue;
+
+							// 1. Physically delete the media file
+							const fullPath = path.join(drivePath, item.current_relative_path);
+							if (fs.existsSync(fullPath)) {
+								await fs.promises.unlink(fullPath);
+							}
+
+							// 2. Physically delete the cached thumbnail file
+							const thumbPath = path.join(drivePath, "albums", ".media_library_cache", "thumbs", `${item.file_hash}.jpg`);
+							if (fs.existsSync(thumbPath)) {
+								await fs.promises.unlink(thumbPath).catch(() => {});
+							}
+
+							// 3. Delete from database
+							db.prepare("DELETE FROM media_items WHERE id = ?").run(id);
+							deletedCount++;
+						}
+						db.run("COMMIT;");
+					} catch (transactionErr) {
+						db.run("ROLLBACK;");
+						throw transactionErr;
+					}
+
+					addLog("info", `Successfully deleted ${deletedCount} media items physically and from database`);
+					return { success: true, deletedCount };
+				} catch (err: any) {
+					addLog("error", `Failed to delete media items: ${err.message}`, err.stack);
+					return { success: false, deletedCount: 0, error: err.message };
 				} finally {
 					db?.close();
 				}

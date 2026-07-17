@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { ChevronLeft, ChevronRight, CornerDownLeft } from "lucide-react";
 
 interface PaginationProps {
@@ -8,7 +8,7 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
 }
 
-export function Pagination({
+export const Pagination = memo(function Pagination({
   page,
   totalPages,
   totalItems,
@@ -34,18 +34,11 @@ export function Pagination({
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
     const range = 1; // Number of pages to show around current page
-    
+
     for (let i = 0; i < totalPages; i++) {
-      if (
-        i === 0 ||
-        i === totalPages - 1 ||
-        Math.abs(i - page) <= range
-      ) {
+      if (i === 0 || i === totalPages - 1 || Math.abs(i - page) <= range) {
         pages.push(i);
-      } else if (
-        i === 1 ||
-        i === totalPages - 2
-      ) {
+      } else if (i === 1 || i === totalPages - 2) {
         if (pages[pages.length - 1] !== "...") {
           pages.push("...");
         }
@@ -58,9 +51,11 @@ export function Pagination({
     <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-4 border-t border-base-200/50 bg-base-300/10 px-4 rounded-xl">
       {/* Information text */}
       <div className="text-xs text-base-content/50 font-medium">
-        Showing page <span className="text-base-content font-extrabold">{page + 1}</span> of{" "}
+        Showing page{" "}
+        <span className="text-base-content font-extrabold">{page + 1}</span> of{" "}
         <span className="text-base-content font-extrabold">{totalPages}</span>{" "}
-        <span className="text-base-content/30 font-normal">|</span> <span className="text-primary font-bold">{totalItems}</span> items total
+        <span className="text-base-content/30 font-normal">|</span>{" "}
+        <span className="text-primary font-bold">{totalItems}</span> items total
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -118,7 +113,9 @@ export function Pagination({
 
         {/* Go to page input */}
         <div className="flex items-center gap-1 bg-base-100 border border-base-300 shadow-sm px-2.5 py-1 rounded-lg">
-          <span className="text-[10px] text-base-content/40 font-bold uppercase tracking-wider">Go to</span>
+          <span className="text-[10px] text-base-content/40 font-bold uppercase tracking-wider">
+            Go to
+          </span>
           <div className="relative flex items-center">
             <input
               type="text"
@@ -141,7 +138,11 @@ export function Pagination({
           </div>
           <button
             onClick={handleJumpSubmit}
-            disabled={!jumpPage || parseInt(jumpPage, 10) < 1 || parseInt(jumpPage, 10) > totalPages}
+            disabled={
+              !jumpPage ||
+              parseInt(jumpPage, 10) < 1 ||
+              parseInt(jumpPage, 10) > totalPages
+            }
             className="btn btn-xs btn-primary btn-square hover:scale-105 active:scale-95 transition-all shadow-md shadow-primary/20 flex items-center justify-center cursor-pointer"
             title="Go to page"
           >
@@ -151,4 +152,4 @@ export function Pagination({
       </div>
     </div>
   );
-}
+});

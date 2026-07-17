@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
 import {
@@ -9,10 +9,13 @@ import {
   Image as ImageIcon,
   Loader2,
   FolderPlus,
+  Trash,
 } from "lucide-react";
 import { MediaCard, MediaItem } from "@/components/MediaCard";
 import { Pagination } from "@/components/Pagination";
 import { FilterBar } from "@/components/FilterBar";
+import { useMutation } from "@tanstack/react-query";
+import { useSelectionStore } from "@/store/selection_store";
 import { useMediaCatalog } from "@/hooks/useMediaCatalog";
 import { LegendList } from "@legendapp/list/react";
 import DialogModal, { ModalHandle } from "@/components/DialogModal";
@@ -34,6 +37,13 @@ export const Route = createFileRoute("/medias/")({
   },
 });
 
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size)
+    result.push(arr.slice(i, i + size));
+  return result;
+}
+
 function MediasComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
   const { page = 0, search = "", filter = "all" } = Route.useSearch();
@@ -43,31 +53,54 @@ function MediasComponent() {
   const { mediaItems, totalItems, loading, scanStatus, refresh } =
     useMediaCatalog(selectedDrive?.path, page, itemsPerPage, search, filter);
 
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const isSelecting = useSelectionStore((s) => s.isSelecting);
+  const selectedItems = useSelectionStore((s) => s.selected);
+  const selectedCount = useSelectionStore((s) => s.selected.size);
+  const startSelection = useSelectionStore((s) => s.start);
+  const cancelSelection = useSelectionStore((s) => s.cancel);
+  const clearSelection = useSelectionStore((s) => s.clear);
+  const selectMany = useSelectionStore((s) => s.selectMany);
+  const deselectMany = useSelectionStore((s) => s.deselectMany);
+
   const [albums, setAlbums] = useState<any[]>([]);
   const [targetAlbumId, setTargetAlbumId] = useState<number | null>(null);
   const [albumSearchQuery, setAlbumSearchQuery] = useState("");
   const [moving, setMoving] = useState(false);
   const modalRef = useRef<ModalHandle>(null);
+  const deleteModalRef = useRef<ModalHandle>(null);
 
-  const filteredAlbums = (albums || []).filter((alb: any) =>
-    alb.name.toLowerCase().includes(albumSearchQuery.toLowerCase()),
+  const deleteMediaMutation = useMutation({
+    mutationFn: async (mediaIds: number[]) => {
+      if (!selectedDrive?.path) throw new Error("No active drive");
+      const res = await rpc.request.deleteMediaItems({
+        drivePath: selectedDrive.path,
+        mediaIds,
+      });
+      if (!res.success) {
+        throw new Error(res.error || "Failed to delete items");
+      }
+      return res.deletedCount;
+    },
+    onSuccess: (deletedCount) => {
+      deleteModalRef.current?.close();
+      useSelectionStore.getState().cancel();
+      refresh();
+      console.log(`Successfully deleted ${deletedCount} media items.`);
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to delete selected media items.");
+    }
+  });
+
+  const filteredAlbums = useMemo(
+    () =>
+      (albums || []).filter((alb: any) =>
+        alb.name.toLowerCase().includes(albumSearchQuery.toLowerCase()),
+      ),
+    [albums, albumSearchQuery],
   );
 
-  const toggleItemSelection = (id: number) => {
-    setSelectedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleOpenMoveModal = async () => {
+  const handleOpenMoveModal = useCallback(async () => {
     if (!selectedDrive?.path) return;
     try {
       const res = await rpc.request.getAlbums({
@@ -80,22 +113,22 @@ function MediasComponent() {
     } catch (err) {
       console.error("Failed to fetch albums for selection:", err);
     }
-  };
+  }, [selectedDrive?.path]);
 
-  const handleMoveItems = async () => {
-    if (!selectedDrive?.path || selectedItems.size === 0 || !targetAlbumId)
-      return;
+  const handleMoveItems = useCallback(async () => {
+    if (!selectedDrive?.path || !targetAlbumId) return;
+    const { selected } = useSelectionStore.getState();
+    if (selected.size === 0) return;
     setMoving(true);
     try {
       const res = await rpc.request.moveMediaItemsToAlbum({
         drivePath: selectedDrive.path,
-        mediaIds: Array.from(selectedItems),
+        mediaIds: Array.from(selected),
         targetAlbumId,
       });
       if (res.success) {
         modalRef.current?.close();
-        setSelectedItems(new Set());
-        setIsSelecting(false);
+        useSelectionStore.getState().cancel();
         setTargetAlbumId(null);
         setAlbumSearchQuery("");
         refresh();
@@ -108,31 +141,48 @@ function MediasComponent() {
     } finally {
       setMoving(false);
     }
-  };
+  }, [selectedDrive?.path, targetAlbumId, refresh]);
 
-  const setPage = (newPage: number) => {
-    navigate({ search: (prev) => ({ ...prev, page: newPage }) });
-  };
+  const setPage = useCallback(
+    (newPage: number) =>
+      navigate({ search: (prev) => ({ ...prev, page: newPage }) }),
+    [navigate],
+  );
 
-  const setSearchQuery = (newSearch: string) => {
-    navigate({ search: (prev) => ({ ...prev, search: newSearch, page: 0 }) });
-  };
+  const setSearchQuery = useCallback(
+    (newSearch: string) =>
+      navigate({ search: (prev) => ({ ...prev, search: newSearch, page: 0 }) }),
+    [navigate],
+  );
 
-  const setFilterType = (newFilter: "all" | "images" | "videos") => {
-    navigate({ search: (prev) => ({ ...prev, filter: newFilter, page: 0 }) });
-  };
+  const setFilterType = useCallback(
+    (newFilter: "all" | "images" | "videos") =>
+      navigate({ search: (prev) => ({ ...prev, filter: newFilter, page: 0 }) }),
+    [navigate],
+  );
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
-  const chunk = <T,>(arr: T[], size: number): T[][] => {
-    const chunked: T[][] = [];
-    for (let i = 0; i < arr.length; i += size) {
-      chunked.push(arr.slice(i, i + size));
-    }
-    return chunked;
-  };
+  const chunkedMedias = useMemo(() => chunk(mediaItems, 4), [mediaItems]);
 
-  const chunkedMedias = chunk(mediaItems, 4);
+  const renderMediaRow = useCallback(
+    ({ item: rowItems }: { item: MediaItem[] }) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+        {rowItems.map((item: MediaItem) => (
+          <MediaCard
+            key={item.id}
+            item={item}
+            drivePath={selectedDrive?.path ?? ""}
+          />
+        ))}
+        {rowItems.length < 4 &&
+          Array.from({ length: 4 - rowItems.length }).map((_, idx) => (
+            <div key={`empty-${idx}`} className="hidden md:block" />
+          ))}
+      </div>
+    ),
+    [selectedDrive?.path],
+  );
 
   // Case 1: No drive is selected
   if (!selectedDrive) {
@@ -235,17 +285,9 @@ function MediasComponent() {
                   selectedItems.has(item.id),
                 );
                 if (allVisibleSelected) {
-                  setSelectedItems((prev) => {
-                    const next = new Set(prev);
-                    mediaItems.forEach((item) => next.delete(item.id));
-                    return next;
-                  });
+                  deselectMany(mediaItems.map((item) => item.id));
                 } else {
-                  setSelectedItems((prev) => {
-                    const next = new Set(prev);
-                    mediaItems.forEach((item) => next.add(item.id));
-                    return next;
-                  });
+                  selectMany(mediaItems.map((item) => item.id));
                 }
               }}
               className="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
@@ -258,8 +300,11 @@ function MediasComponent() {
 
           <button
             onClick={() => {
-              setIsSelecting(!isSelecting);
-              setSelectedItems(new Set());
+              if (isSelecting) {
+                cancelSelection();
+              } else {
+                startSelection();
+              }
             }}
             className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
               isSelecting
@@ -302,39 +347,7 @@ function MediasComponent() {
           data={chunkedMedias}
           estimatedItemSize={290}
           keyExtractor={(_: MediaItem[], index: number) => `row-${index}`}
-          renderItem={({ item: rowItems }: { item: MediaItem[] }) => (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
-              {rowItems.map((item: MediaItem) => (
-                <div key={item.id} className="relative">
-                  {isSelecting && (
-                    <div className="absolute top-3 left-3 z-30">
-                      <input
-                        type="checkbox"
-                        checked={selectedItems.has(item.id)}
-                        onChange={() => toggleItemSelection(item.id)}
-                        className="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg transition-all"
-                      />
-                    </div>
-                  )}
-                  <MediaCard
-                    item={item}
-                    drivePath={selectedDrive.path}
-                    onClick={(e) => {
-                      if (isSelecting) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleItemSelection(item.id);
-                      }
-                    }}
-                  />
-                </div>
-              ))}
-              {rowItems.length < 4 &&
-                Array.from({ length: 4 - rowItems.length }).map((_, idx) => (
-                  <div key={`empty-${idx}`} className="hidden md:block"></div>
-                ))}
-            </div>
-          )}
+          renderItem={renderMediaRow}
         />
       )}
 
@@ -347,18 +360,24 @@ function MediasComponent() {
       />
 
       {/* Selection Floating Bar */}
-      {isSelecting && selectedItems.size > 0 && (
+      {isSelecting && selectedCount > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
           <div className="text-sm font-bold text-base-content">
-            <span className="text-primary mr-1.5">{selectedItems.size}</span>
-            {selectedItems.size === 1 ? "item" : "items"} selected
+            <span className="text-primary mr-1.5">{selectedCount}</span>
+            {selectedCount === 1 ? "item" : "items"} selected
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setSelectedItems(new Set())}
+              onClick={clearSelection}
               className="btn btn-xs btn-ghost text-base-content/60 hover:text-base-content font-medium"
             >
               Clear
+            </button>
+            <button
+              onClick={() => deleteModalRef.current?.open()}
+              className="btn btn-xs btn-outline btn-error font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Trash className="w-3.5 h-3.5" /> Delete
             </button>
             <button
               onClick={handleOpenMoveModal}
@@ -454,6 +473,47 @@ function MediasComponent() {
                 No matching albums found.
               </p>
             )}
+          </div>
+        </div>
+      </DialogModal>
+
+      {/* Delete Media Confirmation Dialog Modal */}
+      <DialogModal
+        ref={deleteModalRef}
+        title="Delete Media Items"
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => deleteModalRef.current?.close()}
+              className="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const { selected } = useSelectionStore.getState();
+                deleteMediaMutation.mutate(Array.from(selected));
+              }}
+              disabled={deleteMediaMutation.isPending}
+              className="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
+            >
+              {deleteMediaMutation.isPending ? "Deleting..." : "Delete Permanently"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-left">
+          <p className="text-xs text-base-content/70 leading-relaxed">
+            Are you sure you want to permanently delete the <span className="font-bold text-base-content">{selectedCount}</span> selected media file{selectedCount === 1 ? "" : "s"}?
+          </p>
+          <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block mb-0.5">Warning: Permanent Deletion</span>
+              This will physically delete the selected files from your disk and database cache. This action <span className="font-bold">cannot</span> be undone.
+            </div>
           </div>
         </div>
       </DialogModal>

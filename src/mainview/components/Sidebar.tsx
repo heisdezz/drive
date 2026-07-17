@@ -15,6 +15,7 @@ import {
   Compass,
   Image as ImageIcon,
   Library,
+  Info,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -143,7 +144,21 @@ export default function Sidebar() {
               }}
               className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
             >
-              <Settings className="w-3.5 h-3.5" /> System Info
+              <Info className="w-3.5 h-3.5" /> System Info
+            </Link>
+            <Link
+              to="/settings"
+              activeProps={{
+                className:
+                  "bg-base-300 text-base-content font-bold border-l-2 border-primary pl-3.5",
+              }}
+              inactiveProps={{
+                className:
+                  "text-base-content/60 hover:text-base-content hover:bg-base-300/40 pl-4",
+              }}
+              className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all duration-155"
+            >
+              <Settings className="w-3.5 h-3.5" /> Settings
             </Link>
           </nav>
         </div>

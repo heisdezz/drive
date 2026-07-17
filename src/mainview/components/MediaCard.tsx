@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { Image as ImageIcon, Film as FilmIcon, Play, Folder } from "lucide-react";
 
@@ -31,7 +31,24 @@ export function MediaCard({
   onClick,
 }: MediaCardProps) {
   const [hasError, setHasError] = useState(false);
+  const [inView, setInView] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const isVideo = item.mime_type.startsWith("video");
   const fileName =
@@ -50,15 +67,7 @@ export function MediaCard({
     >
       {/* Media content */}
       <div className="absolute inset-0 flex items-center justify-center bg-base-300">
-        {!hasError ? (
-          <img
-            src={thumbUrl}
-            alt={fileName}
-            onError={() => setHasError(true)}
-            className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
-            loading="lazy"
-          />
-        ) : (
+        {hasError ? (
           <div className="flex flex-col items-center justify-center text-base-content/30 gap-2">
             {isVideo ? (
               <FilmIcon className="w-8 h-8" />
@@ -69,20 +78,31 @@ export function MediaCard({
               {fileName}
             </span>
           </div>
+        ) : inView ? (
+          <img
+            src={thumbUrl}
+            alt={fileName}
+            onError={() => setHasError(true)}
+            className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
+          />
+        ) : (
+          <div className="w-full h-full animate-pulse bg-base-200/40" />
         )}
       </div>
 
-      {/* Video type badge */}
-      {isVideo && (
-        <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md">
-          <Play className="w-2.5 h-2.5 text-secondary fill-secondary" /> VIDEO
-        </div>
-      )}
+      {/* Media type badge — top right */}
+      <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md">
+        {isVideo ? (
+          <><Play className="w-2.5 h-2.5 text-secondary fill-secondary" /> VIDEO</>
+        ) : (
+          <><ImageIcon className="w-2.5 h-2.5 text-info" /> IMAGE</>
+        )}
+      </div>
 
-      {/* Album Badge */}
+      {/* Album badge — top left, fades on hover */}
       {item.album_name && (
-        <div className="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[70%] group-hover:opacity-0 transition-opacity duration-200 flex items-center gap-1">
-          <Folder className="w-2.5 h-2.5 text-primary fill-primary/10" />
+        <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] group-hover:opacity-0 transition-opacity duration-200 flex items-center gap-1">
+          <Folder className="w-2.5 h-2.5 text-primary fill-primary/10 shrink-0" />
           <span className="truncate">{item.album_name === "unknown" ? "Unsorted Media" : item.album_name}</span>
         </div>
       )}

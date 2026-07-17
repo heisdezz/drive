@@ -22,7 +22,7 @@ export default function SearchBar({ value, onChange }: any) {
       })}
     >
       <input
-        className="input md:input-lg"
+        className="input "
         {...form.register("search")}
         placeholder="search here..."
         onChange={(e) => {
@@ -30,11 +30,8 @@ export default function SearchBar({ value, onChange }: any) {
           debouncedOnChange(e.target.value);
         }}
       />
-      <button
-        className="btn ml-2 btn-primary md:btn-lg btn-square"
-        type="submit"
-      >
-        <SearchIcon />
+      <button className="btn ml-2 btn-primary btn-square" type="submit">
+        <SearchIcon className="size-5" />
       </button>
     </form>
   );

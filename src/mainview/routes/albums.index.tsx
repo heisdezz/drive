@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useRef } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
@@ -13,7 +13,11 @@ import {
   Layers,
   Search,
   ArrowUpDown,
+  FolderPlus,
 } from "lucide-react";
+import DialogModal, { ModalHandle } from "@/components/DialogModal";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
 
 export const Route = createFileRoute("/albums/")({
   component: AlbumsIndexComponent,
@@ -71,31 +75,75 @@ function AlbumCover({ previewItem, drivePath, albumName }: AlbumCoverProps) {
 
 function AlbumsIndexComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "count" | "date">("name");
-
-  const loadAlbums = async () => {
-    if (!selectedDrive?.path) return;
-    setLoading(true);
-    try {
+  const { data: albums = [], isLoading: loading } = useQuery<Album[]>({
+    queryKey: ["albums", selectedDrive?.path],
+    queryFn: async () => {
+      if (!selectedDrive?.path) return [];
       const res = await rpc.request.getAlbums({
         drivePath: selectedDrive.path,
       });
-      if (res.albums && !res.error) {
-        setAlbums(res.albums);
-      }
-    } catch (err) {
-      console.error("Failed to fetch albums:", err);
-    } finally {
-      setLoading(false);
+      if (res.error) throw new Error(res.error);
+      return res.albums || [];
+    },
+    enabled: !!selectedDrive?.path,
+  });
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "count" | "date">("name");
+
+  const { register, handleSubmit, reset, watch } = useForm({
+    defaultValues: {
+      name: "",
+      description: "",
     }
+  });
+
+  const watchName = watch("name");
+  const queryClient = useQueryClient();
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createModalRef = useRef<ModalHandle>(null);
+
+  const createAlbumMutation = useMutation({
+    mutationFn: async (variables: { name: string; description?: string }) => {
+      if (!selectedDrive?.path) throw new Error("No active drive selected");
+      const res = await rpc.request.createAlbum({
+        drivePath: selectedDrive.path,
+        name: variables.name,
+        description: variables.description,
+      });
+      if (!res.success) {
+        throw new Error(res.error || "Failed to create album");
+      }
+      return res.album;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["albums", selectedDrive?.path] });
+      createModalRef.current?.close();
+      reset();
+    },
+    onError: (err: any) => {
+      setCreateError(err.message || "Failed to create album.");
+    }
+  });
+
+  const handleOpenCreateModal = () => {
+    reset();
+    setCreateError(null);
+    createModalRef.current?.open();
   };
 
-  useEffect(() => {
-    loadAlbums();
-  }, [selectedDrive?.path]);
+  const onSubmit = handleSubmit((data) => {
+    const cleanName = data.name.trim();
+    if (!cleanName) {
+      setCreateError("Album name cannot be empty.");
+      return;
+    }
+    setCreateError(null);
+    createAlbumMutation.mutate({
+      name: cleanName,
+      description: data.description?.trim() || undefined,
+    });
+  });
 
   // Case 1: No drive is selected
   if (!selectedDrive) {
@@ -196,6 +244,13 @@ function AlbumsIndexComponent() {
             </span>
           </div>
         </div>
+
+        <button
+          onClick={handleOpenCreateModal}
+          className="btn btn-sm btn-primary font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 ml-auto md:ml-0"
+        >
+          <FolderPlus className="w-3.5 h-3.5" /> Create Album
+        </button>
       </div>
 
       {/* Filter and Sort Bar */}
@@ -292,6 +347,64 @@ function AlbumsIndexComponent() {
           ))}
         </div>
       )}
+      {/* Create Album Modal */}
+      <DialogModal
+        ref={createModalRef}
+        title="Create New Album"
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => createModalRef.current?.close()}
+              className="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="create-album-form"
+              disabled={createAlbumMutation.isPending || !watchName?.trim()}
+              className="btn btn-sm btn-primary font-bold shadow-lg shadow-primary/25"
+            >
+              {createAlbumMutation.isPending ? "Creating..." : "Create"}
+            </button>
+          </>
+        }
+      >
+        <form id="create-album-form" onSubmit={onSubmit} className="space-y-4 text-left">
+          {createError && (
+            <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-center">
+              <Info className="w-4 h-4 flex-shrink-0" />
+              <span>{createError}</span>
+            </div>
+          )}
+
+          <div className="form-control w-full">
+            <label className="label py-1">
+              <span className="label-text font-bold text-xs text-base-content/70">Album Name</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g., Summer Trip 2026"
+              {...register("name", { required: true, maxLength: 50 })}
+              className="input input-bordered input-sm w-full bg-base-100/60 border-base-300 text-xs text-base-content placeholder-base-content/30 focus:outline-none focus:border-primary/60"
+              maxLength={50}
+            />
+          </div>
+
+          <div className="form-control w-full">
+            <label className="label py-1">
+              <span className="label-text font-bold text-xs text-base-content/70">Description (Optional)</span>
+            </label>
+            <textarea
+              placeholder="Provide a brief description of the album's contents..."
+              {...register("description", { maxLength: 200 })}
+              className="textarea textarea-bordered textarea-sm w-full h-20 bg-base-100/60 border-base-300 text-xs text-base-content placeholder-base-content/30 focus:outline-none focus:border-primary/60"
+              maxLength={200}
+            />
+          </div>
+        </form>
+      </DialogModal>
     </div>
   );
 }

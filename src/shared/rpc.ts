@@ -215,6 +215,51 @@ export interface MainRPC extends ElectrobunRPCSchema {
 					error?: string;
 				};
 			};
+			createAlbum: {
+				params: {
+					drivePath: string;
+					name: string;
+					description?: string;
+				};
+				response: {
+					success: boolean;
+					album?: {
+						id: number;
+						name: string;
+						relative_path: string;
+						description: string | null;
+						created_at: string;
+					};
+					error?: string;
+				};
+			};
+			testGoogleDriveConnection: {
+				params: {
+					serviceAccountJson: string;
+					folderId?: string;
+				};
+				response: {
+					success: boolean;
+					error?: string;
+				};
+			};
+			backupToGoogleDrive: {
+				params: {
+					drivePath: string;
+					serviceAccountJson: string;
+					folderId?: string;
+				};
+				response: {
+					success: boolean;
+					uploadResults?: {
+						filename: string;
+						fileId: string;
+						success: boolean;
+						error?: string;
+					}[];
+					error?: string;
+				};
+			};
 		};
 		messages: {};
 	};

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as CounterRouteImport } from './routes/counter'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as MediasIndexRouteImport } from './routes/medias.index'
 import { Route as DiscoverIndexRouteImport } from './routes/discover.index'
 import { Route as AlbumsIndexRouteImport } from './routes/albums.index'
@@ -31,6 +32,11 @@ const AboutRoute = AboutRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MediasIndexRoute = MediasIndexRouteImport.update({
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/albums/': typeof AlbumsIndexRoute
   '/discover/': typeof DiscoverIndexRoute
   '/medias/': typeof MediasIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/album/$id/': typeof AlbumIdIndexRoute
   '/item/$id/': typeof ItemIdIndexRoute
 }
@@ -76,6 +83,7 @@ export interface FileRoutesByTo {
   '/albums': typeof AlbumsIndexRoute
   '/discover': typeof DiscoverIndexRoute
   '/medias': typeof MediasIndexRoute
+  '/settings': typeof SettingsIndexRoute
   '/album/$id': typeof AlbumIdIndexRoute
   '/item/$id': typeof ItemIdIndexRoute
 }
@@ -87,6 +95,7 @@ export interface FileRoutesById {
   '/albums/': typeof AlbumsIndexRoute
   '/discover/': typeof DiscoverIndexRoute
   '/medias/': typeof MediasIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/album/$id/': typeof AlbumIdIndexRoute
   '/item/$id/': typeof ItemIdIndexRoute
 }
@@ -99,6 +108,7 @@ export interface FileRouteTypes {
     | '/albums/'
     | '/discover/'
     | '/medias/'
+    | '/settings/'
     | '/album/$id/'
     | '/item/$id/'
   fileRoutesByTo: FileRoutesByTo
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/albums'
     | '/discover'
     | '/medias'
+    | '/settings'
     | '/album/$id'
     | '/item/$id'
   id:
@@ -119,6 +130,7 @@ export interface FileRouteTypes {
     | '/albums/'
     | '/discover/'
     | '/medias/'
+    | '/settings/'
     | '/album/$id/'
     | '/item/$id/'
   fileRoutesById: FileRoutesById
@@ -130,6 +142,7 @@ export interface RootRouteChildren {
   AlbumsIndexRoute: typeof AlbumsIndexRoute
   DiscoverIndexRoute: typeof DiscoverIndexRoute
   MediasIndexRoute: typeof MediasIndexRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
   AlbumIdIndexRoute: typeof AlbumIdIndexRoute
   ItemIdIndexRoute: typeof ItemIdIndexRoute
 }
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/medias/': {
@@ -202,6 +222,7 @@ const rootRouteChildren: RootRouteChildren = {
   AlbumsIndexRoute: AlbumsIndexRoute,
   DiscoverIndexRoute: DiscoverIndexRoute,
   MediasIndexRoute: MediasIndexRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
   AlbumIdIndexRoute: AlbumIdIndexRoute,
   ItemIdIndexRoute: ItemIdIndexRoute,
 }

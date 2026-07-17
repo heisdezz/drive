@@ -15,6 +15,7 @@ import path from "node:path";
 import { Database } from "bun:sqlite";
 import { readdir } from "node:fs/promises";
 import si from "systeminformation";
+import { google } from "googleapis";
 
 interface LogEntry {
 	timestamp: string;
@@ -423,6 +424,60 @@ async function moveFile(src: string, dest: string) {
 		addLog("info", `fs.rename failed (${err.message}), trying copy + delete fallback...`);
 		await fs.promises.copyFile(src, dest);
 		await fs.promises.unlink(src);
+	}
+}
+
+async function uploadFileToGDrive(
+	auth: any,
+	filePath: string,
+	filename: string,
+	folderId?: string
+): Promise<string | null> {
+	const drive = google.drive({ version: "v3", auth });
+	const fileMetadata: any = {
+		name: filename,
+	};
+	if (folderId) {
+		fileMetadata.parents = [folderId];
+	}
+	
+	const media = {
+		mimeType: "application/x-sqlite3",
+		body: fs.createReadStream(filePath),
+	};
+
+	let existingFileId: string | null = null;
+	try {
+		const q = `name = '${filename}'${folderId ? ` and '${folderId}' in parents` : ""}`;
+		const response = await drive.files.list({
+			q,
+			fields: "files(id)",
+			spaces: "drive",
+		});
+		const files = response.data.files || [];
+		if (files.length > 0 && files[0].id) {
+			existingFileId = files[0].id;
+		}
+	} catch (err: any) {
+		addLog("warn", `Google Drive check file failed (will create new): ${err.message}`);
+	}
+
+	if (existingFileId) {
+		addLog("info", `Updating existing file on Google Drive: ${filename} (ID: ${existingFileId})`);
+		const response = await drive.files.update({
+			fileId: existingFileId,
+			media: media,
+			fields: "id",
+		});
+		return response.data.id || null;
+	} else {
+		addLog("info", `Creating new file on Google Drive: ${filename}`);
+		const response = await drive.files.create({
+			requestBody: fileMetadata,
+			media: media,
+			fields: "id",
+		});
+		return response.data.id || null;
 	}
 }
 
@@ -1449,6 +1504,148 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					return { success: false, movedCount: 0, error: err.message };
 				} finally {
 					db?.close();
+				}
+			},
+			createAlbum: async ({ drivePath, name, description }) => {
+				addLog("info", `RPC Request: createAlbum invoked`, `name: ${name}, description: ${description}`);
+				let db: Database | null = null;
+				try {
+					const dbPath = path.join(drivePath, "albums", ".media_library.db");
+					if (!fs.existsSync(dbPath)) {
+						throw new Error("Library database not found");
+					}
+
+					// Validate album name
+					const cleanName = name?.trim();
+					if (!cleanName || cleanName === "" || cleanName.includes("/") || cleanName.includes("\\") || cleanName.includes("..")) {
+						throw new Error("Invalid album name. Names cannot be empty and cannot contain path traversal or slashes.");
+					}
+
+					assertWritable(drivePath);
+					db = getDatabaseConnection(dbPath);
+
+					// 1. Check if album with this name already exists
+					const existing = db.prepare("SELECT * FROM albums WHERE name = ?").get(cleanName);
+					if (existing) {
+						throw new Error(`An album with the name '${cleanName}' already exists.`);
+					}
+
+					// 2. Insert into DB
+					const relativePath = `albums/${cleanName}`;
+					const result = db.prepare(`
+						INSERT INTO albums (name, relative_path, description)
+						VALUES (?, ?, ?)
+					`).run(cleanName, relativePath, description || null);
+
+					const newId = result.lastInsertRowid as number;
+
+					// 3. Create physical directory
+					const fullDirPath = path.join(drivePath, "albums", cleanName);
+					if (!fs.existsSync(fullDirPath)) {
+						await fs.promises.mkdir(fullDirPath, { recursive: true });
+					}
+
+					const album = db.prepare("SELECT * FROM albums WHERE id = ?").get(newId) as {
+						id: number;
+						name: string;
+						relative_path: string;
+						description: string | null;
+						created_at: string;
+					};
+
+					addLog("info", `Successfully created album ${cleanName} with ID ${newId}`);
+					return { success: true, album };
+				} catch (err: any) {
+					addLog("error", `Failed to create album: ${err.message}`, err.stack);
+					return { success: false, error: err.message };
+				} finally {
+					db?.close();
+				}
+			},
+			testGoogleDriveConnection: async ({ serviceAccountJson, folderId }) => {
+				addLog("info", `RPC Request: testGoogleDriveConnection invoked`);
+				try {
+					const credentials = JSON.parse(serviceAccountJson);
+					const auth = new google.auth.GoogleAuth({
+						credentials,
+						scopes: ["https://www.googleapis.com/auth/drive.file"],
+					});
+					const drive = google.drive({ version: "v3", auth });
+					
+					// Test list files
+					await drive.files.list({ pageSize: 1 });
+					
+					// If folderId is specified, verify folder accessibility
+					if (folderId) {
+						await drive.files.get({ fileId: folderId });
+					}
+					
+					return { success: true };
+				} catch (err: any) {
+					addLog("error", `Failed Google Drive Connection test: ${err.message}`);
+					return { success: false, error: err.message };
+				}
+			},
+			backupToGoogleDrive: async ({ drivePath, serviceAccountJson, folderId }) => {
+				addLog("info", `RPC Request: backupToGoogleDrive invoked`, `drivePath: ${drivePath}`);
+				try {
+					const dbPath = path.join(drivePath, "albums", ".media_library.db");
+					if (!fs.existsSync(dbPath)) {
+						return { success: false, error: "No library database found to back up." };
+					}
+
+					// Parse service account json
+					let credentials;
+					try {
+						credentials = JSON.parse(serviceAccountJson);
+					} catch (e: any) {
+						return { success: false, error: "Invalid Service Account JSON: " + e.message };
+					}
+
+					// Authenticate
+					const auth = new google.auth.GoogleAuth({
+						credentials,
+						scopes: ["https://www.googleapis.com/auth/drive.file"],
+					});
+
+					const drive = google.drive({ version: "v3", auth });
+					// Test auth by listing files or getting drive details
+					await drive.files.list({ pageSize: 1 });
+
+					const uploadResults: { filename: string; fileId: string; success: boolean; error?: string }[] = [];
+
+					// 1. Upload main DB
+					try {
+						const fileId = await uploadFileToGDrive(auth, dbPath, ".media_library.db", folderId);
+						uploadResults.push({ filename: ".media_library.db", fileId: fileId || "", success: true });
+					} catch (e: any) {
+						addLog("error", `Failed to upload main db to Google Drive: ${e.message}`);
+						uploadResults.push({ filename: ".media_library.db", fileId: "", success: false, error: e.message });
+					}
+
+					// 2. Upload backups
+					const dir = backupDirFor(dbPath);
+					if (fs.existsSync(dir)) {
+						const backups = fs.readdirSync(dir)
+							.filter((f) => f.startsWith("media_library-") && f.endsWith(".db"));
+						
+						for (const backupFile of backups) {
+							const backupPath = path.join(dir, backupFile);
+							try {
+								const fileId = await uploadFileToGDrive(auth, backupPath, backupFile, folderId);
+								uploadResults.push({ filename: backupFile, fileId: fileId || "", success: true });
+							} catch (e: any) {
+								addLog("error", `Failed to upload backup ${backupFile} to Google Drive: ${e.message}`);
+								uploadResults.push({ filename: backupFile, fileId: "", success: false, error: e.message });
+							}
+						}
+					}
+
+					const successCount = uploadResults.filter(r => r.success).length;
+					return { success: successCount > 0, uploadResults };
+				} catch (err: any) {
+					addLog("error", `Failed Google Drive backup process: ${err.message}`, err.stack);
+					return { success: false, error: err.message };
 				}
 			}
 		}

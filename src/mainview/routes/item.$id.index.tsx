@@ -4,20 +4,19 @@ import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
 import {
   ChevronLeft,
-  ChevronRight,
   Info,
   File,
   FolderOpen,
   Calendar,
   HardDrive,
   Loader2,
-  ExternalLink,
   LayoutGrid,
   Folder,
   Hash,
   Clock,
 } from "lucide-react";
 import { MediaCard, MediaItem } from "@/components/MediaCard";
+import { MediaPlayer } from "@/components/MediaPlayer";
 
 interface ItemSearch {
   albumId?: number;
@@ -58,8 +57,6 @@ function ItemViewerComponent() {
   const [item, setItem] = useState<MediaItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [launching, setLaunching] = useState(false);
-  const [launchError, setLaunchError] = useState<string | null>(null);
   const [related, setRelated] = useState<MediaItem[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [nextId, setNextId] = useState<number | null>(null);
@@ -170,26 +167,7 @@ function ItemViewerComponent() {
       ? `http://localhost:51789/media?path=${encodeURIComponent(selectedDrive.path + "/" + item.current_relative_path)}`
       : "";
 
-  const isVideo = item?.mime_type.startsWith("video");
-
-  const openInExternalPlayer = async () => {
-    if (!item || !selectedDrive) return;
-    setLaunching(true);
-    setLaunchError(null);
-    try {
-      const res = await rpc.request.openExternal({
-        drivePath: selectedDrive.path,
-        relativePath: item.current_relative_path,
-      });
-      if (!res.success) {
-        setLaunchError(res.error || "Failed to launch external player");
-      }
-    } catch (err: any) {
-      setLaunchError(err.message || "Failed to launch external player");
-    } finally {
-      setLaunching(false);
-    }
-  };
+  const isVideo = item?.mime_type.startsWith("video") ?? false;
 
   if (!selectedDrive) {
     return (
@@ -226,7 +204,9 @@ function ItemViewerComponent() {
         <div className="w-16 h-16 rounded-full bg-error/10 border border-error/25 flex items-center justify-center mb-4 text-error">
           <Info className="w-8 h-8" />
         </div>
-        <h3 className="text-base-content font-bold text-lg">Unable to Load Media</h3>
+        <h3 className="text-base-content font-bold text-lg">
+          Unable to Load Media
+        </h3>
         <p className="text-base-content/40 text-xs mt-1 max-w-sm">
           {error ||
             "The selected media item was not found in this drive's catalog database."}
@@ -269,81 +249,17 @@ function ItemViewerComponent() {
       {/* Layout Wrapper */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left Column: Media Player (2/3 width on desktop) */}
-        <div className="lg:col-span-2 rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl flex flex-col items-center justify-center h-[50vh] md:h-[60vh] lg:h-[65vh] p-4 relative group">
-          {/* Previous item button overlay */}
-          {prevId && (
-            <Link
-              to="/item/$id"
-              params={{ id: String(prevId) }}
-              search={{ albumId }}
-              className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/70 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
-              title="Previous item (Left Arrow)"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </Link>
-          )}
-
-          {/* Next item button overlay */}
-          {nextId && (
-            <Link
-              to="/item/$id"
-              params={{ id: String(nextId) }}
-              search={{ albumId }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/70 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
-              title="Next item (Right Arrow)"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </Link>
-          )}
-
-          {isVideo ? (
-            <>
-              <video
-                key={item.id}
-                controls
-                autoPlay
-                src={mediaUrl}
-                className="w-full h-full max-h-[70vh] object-contain rounded-lg bg-black"
-              />
-              <button
-                onClick={openInExternalPlayer}
-                disabled={launching}
-                className="absolute top-3 right-3 z-10 btn btn-xs btn-ghost bg-base-300/70 backdrop-blur-md border border-base-300 text-base-content/80 hover:text-base-content font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Open in your system player (mpv)"
-              >
-                {launching ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <ExternalLink className="w-3.5 h-3.5" />
-                )}
-                <span className="hidden sm:inline">External Player</span>
-              </button>
-              {launchError && (
-                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20">
-                  {launchError}
-                </p>
-              )}
-            </>
-          ) : (
-            <img
-              key={item.id}
-              src={mediaUrl}
-              alt={fileName}
-              className="w-full h-full max-h-[70vh] object-contain rounded-lg shadow-lg"
-            />
-          )}
-
-          {/* Transition Loading Overlay inside player */}
-          {loading && (
-            <div className="absolute inset-0 bg-base-300/75 backdrop-blur-[2px] flex flex-col items-center justify-center z-20 transition-all duration-300">
-              <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
-              <p className="text-base-content/60 text-xs font-bold">
-                Loading media details...
-              </p>
-            </div>
-          )}
-        </div>
-
+        <MediaPlayer
+          item={item}
+          drivePath={selectedDrive.path}
+          mediaUrl={mediaUrl}
+          fileName={fileName}
+          isVideo={isVideo}
+          prevId={prevId}
+          nextId={nextId}
+          albumId={albumId}
+          loading={loading}
+        />
         {/* Right Column: Metadata Details Panel (1/3 width) */}
         <div
           className={`p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl space-y-6 transition-all duration-300 ${loading ? "opacity-40 pointer-events-none filter blur-[0.5px]" : "opacity-100"}`}

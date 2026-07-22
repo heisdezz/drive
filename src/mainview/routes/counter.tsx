@@ -1,109 +1,271 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export const Route = createFileRoute("/counter")({
-  component: Counter,
+  component: VideoTest,
 });
 
-function Counter() {
-  const [count, setCount] = useState(0);
-  const [history, setHistory] = useState<number[]>([]);
+const TEST_FILE =
+  "/run/media/destiny/Ventoy/albums/shakirah350/Video TikTok_7481944724199230725.mp4";
+const MEDIA_SERVER = "http://localhost:51789";
 
-  const handleIncrement = () => {
-    setCount((c) => {
-      const next = c + 1;
-      setHistory((h) => [next, ...h.slice(0, 4)]);
-      return next;
-    });
-  };
+type Source = "server" | "file";
 
-  const handleDecrement = () => {
-    setCount((c) => {
-      const next = c - 1;
-      setHistory((h) => [next, ...h.slice(0, 4)]);
-      return next;
-    });
-  };
+function VideoTest() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [source, setSource] = useState<Source>("server");
+  const [logs, setLogs] = useState<string[]>([]);
+  const [info, setInfo] = useState({
+    readyState: 0,
+    networkState: 0,
+    width: 0,
+    height: 0,
+    duration: 0,
+    buffered: "",
+  });
 
-  const handleReset = () => {
-    setCount(0);
-    setHistory((h) => [0, ...h.slice(0, 4)]);
-  };
+  const serverUrl = `${MEDIA_SERVER}/media?path=${encodeURIComponent(TEST_FILE)}`;
+  const fileUrl = `file://${TEST_FILE}`;
+  const src = source === "server" ? serverUrl : fileUrl;
+
+  const log = (msg: string) =>
+    setLogs((prev) => [
+      `${new Date().toLocaleTimeString()}.${String(Date.now() % 1000).padStart(3, "0")}  ${msg}`,
+      ...prev.slice(0, 199),
+    ]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const events = [
+      "loadstart",
+      "loadedmetadata",
+      "loadeddata",
+      "canplay",
+      "canplaythrough",
+      "play",
+      "playing",
+      "pause",
+      "waiting",
+      "stalled",
+      "suspend",
+      "seeking",
+      "seeked",
+      "ended",
+      "error",
+    ] as const;
+
+    const snapshot = () =>
+      setInfo({
+        readyState: v.readyState,
+        networkState: v.networkState,
+        width: v.videoWidth,
+        height: v.videoHeight,
+        duration: Number.isFinite(v.duration) ? v.duration : 0,
+        buffered:
+          v.buffered.length > 0
+            ? Array.from({ length: v.buffered.length })
+                .map(
+                  (_, i) =>
+                    `${v.buffered.start(i).toFixed(1)}–${v.buffered.end(i).toFixed(1)}`,
+                )
+                .join(", ")
+            : "none",
+      });
+
+    const handlers: Record<string, () => void> = {};
+    for (const ev of events) {
+      handlers[ev] = () => {
+        if (ev === "error") {
+          const err = v.error;
+          log(
+            `⚠️ error  code=${err?.code} ${err?.message || mediaErrorText(err?.code)}`,
+          );
+        } else {
+          log(ev);
+        }
+        snapshot();
+      };
+      v.addEventListener(ev, handlers[ev]);
+    }
+
+    const onTime = () => snapshot();
+    v.addEventListener("timeupdate", onTime);
+
+    log(`── source switched to "${source}" → ${src}`);
+
+    return () => {
+      for (const ev of events) v.removeEventListener(ev, handlers[ev]);
+      v.removeEventListener("timeupdate", onTime);
+    };
+  }, [source, src]);
 
   return (
-    <div className="max-w-xl mx-auto space-y-8">
-      {/* Hero Title */}
-      <div className="text-center space-y-2">
-        <h2 className="text-3xl font-extrabold text-white">
-          Interactive Counter
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="space-y-1">
+        <h2 className="text-2xl font-extrabold text-base-content">
+          Video Playback Diagnostic
         </h2>
-        <p className="text-slate-400 text-sm">
-          Testing React local state persistence across route transitions.
+        <p className="text-base-content/60 text-sm">
+          Plays the test file through the local media server (range-request
+          path) so you can isolate implementation vs. WebKit/GStreamer decode
+          issues.
         </p>
       </div>
 
-      {/* Counter Module Card */}
-      <div className="relative p-8 rounded-3xl bg-base-100/40 border border-slate-800 shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col items-center">
-        <div className="absolute -top-12 -left-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl"></div>
-        <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl"></div>
-
-        {/* Huge Count Display */}
-        <div className="h-44 w-44 rounded-full border-4 border-indigo-500/30 bg-slate-950 flex items-center justify-center shadow-inner mb-8 transition-transform duration-300 hover:scale-105">
-          <span className="text-6xl font-black text-indigo-400 tracking-tighter select-none">
-            {count}
-          </span>
-        </div>
-
-        {/* Controls */}
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+      {/* Source toggle */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold text-base-content/60">Source:</span>
+        <div className="join">
           <button
-            onClick={handleDecrement}
-            className="flex-1 sm:flex-none px-6 py-3 bg-slate-950 hover:bg-base-100 border border-slate-800 text-indigo-400 font-extrabold rounded-xl transition-all duration-200 hover:scale-105 active:scale-95"
+            onClick={() => setSource("server")}
+            className={`btn btn-sm join-item ${source === "server" ? "btn-primary" : "btn-outline"}`}
           >
-            - Decrement
+            Media Server (/media)
           </button>
           <button
-            onClick={handleIncrement}
-            className="flex-1 sm:flex-none px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-xl shadow-lg shadow-indigo-600/20 transition-all duration-200 hover:scale-105 active:scale-95"
+            onClick={() => setSource("file")}
+            className={`btn btn-sm join-item ${source === "file" ? "btn-primary" : "btn-outline"}`}
           >
-            + Increment
-          </button>
-          <button
-            onClick={handleReset}
-            className="px-5 py-3 bg-slate-950 hover:bg-base-100 border border-slate-800 text-slate-400 hover:text-slate-200 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95"
-          >
-            Reset
+            Direct file://
           </button>
         </div>
+        <button
+          onClick={() => videoRef.current?.load()}
+          className="btn btn-sm btn-outline ml-2"
+        >
+          Reload
+        </button>
       </div>
 
-      {/* State Transition History */}
-      <div className="p-6 rounded-2xl bg-base-100/20 border border-slate-900/80 space-y-4">
-        <h3 className="text-sm font-bold text-slate-400 tracking-wider">
-          STATE LOGS
-        </h3>
-        {history.length === 0 ? (
-          <p className="text-slate-600 text-xs italic">
-            No actions recorded in this session yet.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {history.map((h, i) => (
-              <span
+      {/* The video */}
+      <div className="rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl">
+        <video
+          ref={videoRef}
+          key={src}
+          src={src}
+          controls
+          autoPlay
+          playsInline
+          style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+          className="w-full max-h-[55vh] object-contain bg-black"
+        />
+      </div>
+
+      {/* Live state */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Stat
+          label="readyState"
+          value={`${info.readyState} ${readyStateText(info.readyState)}`}
+        />
+        <Stat
+          label="networkState"
+          value={`${info.networkState} ${networkStateText(info.networkState)}`}
+        />
+        <Stat
+          label="resolution"
+          value={info.width ? `${info.width}×${info.height}` : "—"}
+        />
+        <Stat
+          label="duration"
+          value={info.duration ? `${info.duration.toFixed(1)}s` : "—"}
+        />
+        <Stat
+          label="buffered"
+          value={info.buffered || "—"}
+          className="col-span-2"
+        />
+      </div>
+
+      <div className="text-[11px] font-mono text-base-content/50 break-all bg-base-300/50 border border-base-200 rounded-lg p-3">
+        {src}
+      </div>
+
+      {/* Event log */}
+      <div className="rounded-2xl bg-base-300 border border-base-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-base-200">
+          <span className="text-xs font-bold text-base-content/70">
+            Event Log
+          </span>
+          <button
+            onClick={() => setLogs([])}
+            className="btn btn-xs btn-ghost text-base-content/60"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="max-h-72 overflow-y-auto font-mono text-[11px] divide-y divide-base-200/40">
+          {logs.length === 0 ? (
+            <div className="p-4 text-base-content/40 italic">
+              No events yet…
+            </div>
+          ) : (
+            logs.map((l, i) => (
+              <div
                 key={i}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-all duration-300 ${
-                  i === 0
-                    ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300 font-bold"
-                    : "bg-slate-950/40 border-slate-900 text-slate-500"
-                }`}
+                className={`px-4 py-1.5 ${l.includes("⚠️") ? "text-error bg-error/5" : "text-base-content/70"}`}
               >
-                {i === 0 ? "Latest: " : ""}
-                {h}
-              </span>
-            ))}
-          </div>
-        )}
+                {l}
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+function Stat({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-xl bg-base-300 border border-base-200 p-3 ${className}`}
+    >
+      <div className="text-[9px] uppercase font-bold text-base-content/40 tracking-wider">
+        {label}
+      </div>
+      <div className="text-xs font-mono text-base-content mt-0.5 break-all">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function mediaErrorText(code?: number) {
+  switch (code) {
+    case 1:
+      return "MEDIA_ERR_ABORTED (fetch aborted)";
+    case 2:
+      return "MEDIA_ERR_NETWORK (network error)";
+    case 3:
+      return "MEDIA_ERR_DECODE (decode failed — codec/hardware issue)";
+    case 4:
+      return "MEDIA_ERR_SRC_NOT_SUPPORTED (container/codec unsupported)";
+    default:
+      return "unknown";
+  }
+}
+
+function readyStateText(s: number) {
+  return (
+    [
+      "HAVE_NOTHING",
+      "HAVE_METADATA",
+      "HAVE_CURRENT",
+      "HAVE_FUTURE",
+      "HAVE_ENOUGH",
+    ][s] ?? ""
+  );
+}
+
+function networkStateText(s: number) {
+  return ["EMPTY", "IDLE", "LOADING", "NO_SOURCE"][s] ?? "";
 }

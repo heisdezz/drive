@@ -31,6 +31,9 @@ interface AlbumSearch {
   page?: number;
   limit?: number;
   search?: string;
+  filter?: "all" | "images" | "videos";
+  sortBy?: "date" | "name" | "size";
+  sortOrder?: "asc" | "desc";
 }
 
 export const Route = createFileRoute("/album/$id/")({
@@ -40,6 +43,9 @@ export const Route = createFileRoute("/album/$id/")({
       page: Number(search.page) || 0,
       limit: Number(search.limit) || 100,
       search: (search.search as string) || "",
+      filter: (search.filter as "all" | "images" | "videos") || "all",
+      sortBy: (search.sortBy as "date" | "name" | "size") || "date",
+      sortOrder: (search.sortOrder as "asc" | "desc") || "desc",
     };
   },
 });
@@ -54,7 +60,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 function AlbumDetailComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
   const { id } = Route.useParams();
-  const { page = 0, limit = 100, search = "" } = Route.useSearch();
+  const { page = 0, limit = 100, search = "", filter = "all", sortBy = "date", sortOrder = "desc" } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const queryClient = useQueryClient();
   const albumId = Number(id);
@@ -89,6 +95,9 @@ function AlbumDetailComponent() {
       page,
       limit,
       search,
+      filter,
+      sortBy,
+      sortOrder,
     ],
     queryFn: async () => {
       if (!selectedDrive?.path || isNaN(albumId))
@@ -99,6 +108,9 @@ function AlbumDetailComponent() {
         limit,
         offset: page * limit,
         search,
+        filter: filter === "all" ? undefined : filter,
+        sortBy,
+        sortOrder,
       });
       if (res.error) throw new Error(res.error);
       return { items: (res.items as MediaItem[]) || [], total: res.total || 0 };
@@ -163,6 +175,24 @@ function AlbumDetailComponent() {
   const setSearchQuery = useCallback(
     (newSearch: string) =>
       navigate({ search: (prev) => ({ ...prev, page: 0, search: newSearch }) }),
+    [navigate],
+  );
+
+  const handleFilterChange = useCallback(
+    (newFilter: "all" | "images" | "videos") =>
+      navigate({ search: (prev) => ({ ...prev, page: 0, filter: newFilter }) }),
+    [navigate],
+  );
+
+  const handleSortByChange = useCallback(
+    (newSortBy: "date" | "name" | "size") =>
+      navigate({ search: (prev) => ({ ...prev, page: 0, sortBy: newSortBy }) }),
+    [navigate],
+  );
+
+  const toggleSortOrder = useCallback(
+    () =>
+      navigate({ search: (prev) => ({ ...prev, page: 0, sortOrder: prev.sortOrder === "asc" ? "desc" : "asc" }) }),
     [navigate],
   );
 
@@ -363,10 +393,61 @@ function AlbumDetailComponent() {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="bg-base-200/40 border border-base-200 p-4 rounded-xl shadow-sm flex items-center justify-between gap-4">
-        <div className="w-full max-w-md">
+      {/* Filter, Search & Sort Bar */}
+      <div className="bg-base-200/40 border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="w-full md:max-w-xs">
           <SearchBar value={search} onChange={setSearchQuery} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* File Type Filter Tabs */}
+          <div className="tabs tabs-boxed bg-base-300 border border-base-200/50 p-0.5">
+            <button
+              onClick={() => handleFilterChange("all")}
+              className={`tab tab-sm font-bold rounded-lg ${filter === "all" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => handleFilterChange("images")}
+              className={`tab tab-sm font-bold rounded-lg ${filter === "images" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
+            >
+              Photos
+            </button>
+            <button
+              onClick={() => handleFilterChange("videos")}
+              className={`tab tab-sm font-bold rounded-lg ${filter === "videos" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
+            >
+              Videos
+            </button>
+          </div>
+
+          {/* Sort By Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-base-content/60 font-semibold">Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => handleSortByChange(e.target.value as "date" | "name" | "size")}
+              className="select select-bordered select-sm text-xs bg-base-100/60 border-base-300 text-base-content/80 rounded-lg focus:outline-none focus:border-primary/60 cursor-pointer"
+            >
+              <option value="date">Date Added</option>
+              <option value="name">File Name</option>
+              <option value="size">File Size</option>
+            </select>
+          </div>
+
+          {/* Sort Direction Toggle */}
+          <button
+            onClick={toggleSortOrder}
+            className="btn btn-sm btn-outline border-base-300 text-base-content/80 hover:bg-base-100 px-2 cursor-pointer font-bold flex items-center gap-1"
+            title={sortOrder === "asc" ? "Ascending order" : "Descending order"}
+          >
+            {sortOrder === "asc" ? (
+              <span className="text-xs">ASC ↑</span>
+            ) : (
+              <span className="text-xs">DESC ↓</span>
+            )}
+          </button>
         </div>
       </div>
 

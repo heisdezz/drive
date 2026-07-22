@@ -1357,8 +1357,8 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 					db?.close();
 				}
 			},
-			getAlbumMedia: async ({ drivePath, albumId, limit, offset, search, filter }) => {
-				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}, search: ${search}, filter: ${filter}`);
+			getAlbumMedia: async ({ drivePath, albumId, limit, offset, search, filter, sortBy, sortOrder }) => {
+				addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}, search: ${search}, filter: ${filter}, sortBy: ${sortBy}, sortOrder: ${sortOrder}`);
 				let db: Database | null = null;
 				try {
 					const dbPath = path.join(drivePath, "albums", ".media_library.db");
@@ -1391,7 +1391,16 @@ const rpc = BrowserView.defineRPC<MainRPC>({
 						countSql += " AND mime_type LIKE 'video/%'";
 					}
 
-					sql += " ORDER BY m.created_at DESC LIMIT ? OFFSET ?";
+					// Dynamic but secure whitelist ordering
+					let orderCol = "m.created_at";
+					if (sortBy === "name") {
+						orderCol = "m.original_relative_path";
+					} else if (sortBy === "size") {
+						orderCol = "m.file_size";
+					}
+
+					const direction = sortOrder === "asc" ? "ASC" : "DESC";
+					sql += ` ORDER BY ${orderCol} ${direction} LIMIT ? OFFSET ?`;
 					
 					const countParams = [...params];
 					params.push(limit, offset);
@@ -1888,6 +1897,7 @@ const mediaServer = Bun.serve({
 			"Access-Control-Allow-Origin": "*",
 			"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 			"Access-Control-Allow-Headers": "*",
+			"Access-Control-Expose-Headers": "Content-Range, Accept-Ranges, Content-Length",
 		};
 
 		if (req.method === "OPTIONS") {
@@ -1902,15 +1912,55 @@ const mediaServer = Bun.serve({
 			}
 			try {
 				const file = Bun.file(filePath);
-				if (await file.exists()) {
-					return new Response(file, {
+				if (!(await file.exists())) {
+					return new Response("File not found", { status: 404, headers: corsHeaders });
+				}
+
+				const total = file.size;
+				const contentType = file.type || "application/octet-stream";
+				const rangeHeader = req.headers.get("range");
+
+				// Serve HTTP range requests (206) so <video> can buffer ahead and seek.
+				if (rangeHeader) {
+					const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+					let start = match && match[1] ? parseInt(match[1], 10) : 0;
+					let end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+
+					if (
+						Number.isNaN(start) ||
+						Number.isNaN(end) ||
+						start > end ||
+						start >= total
+					) {
+						return new Response("Range Not Satisfiable", {
+							status: 416,
+							headers: { ...corsHeaders, "Content-Range": `bytes */${total}` },
+						});
+					}
+					if (end >= total) end = total - 1;
+
+					return new Response(file.slice(start, end + 1), {
+						status: 206,
 						headers: {
 							...corsHeaders,
+							"Content-Type": contentType,
+							"Content-Range": `bytes ${start}-${end}/${total}`,
+							"Accept-Ranges": "bytes",
+							"Content-Length": String(end - start + 1),
 							"Cache-Control": "public, max-age=86400",
-						}
+						},
 					});
 				}
-				return new Response("File not found", { status: 404, headers: corsHeaders });
+
+				return new Response(file, {
+					headers: {
+						...corsHeaders,
+						"Content-Type": contentType,
+						"Content-Length": String(total),
+						"Accept-Ranges": "bytes",
+						"Cache-Control": "public, max-age=86400",
+					}
+				});
 			} catch (err: any) {
 				return new Response(err.message, { status: 500, headers: corsHeaders });
 			}

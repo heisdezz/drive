@@ -50,6 +50,7 @@ function RootComponent() {
                 WebKit HMR
               </span>
             </div>
+            z
           </div>
         </header>
 

@@ -23,17 +23,24 @@ export const useSelectionStore = create<SelectionState>((set) => ({
       else next.add(id);
       return { selected: next };
     }),
-  clear: () => set({ selected: new Set() }),
+  clear: () =>
+    set((s) => (s.selected.size === 0 ? s : { selected: new Set() })),
   selectMany: (ids) =>
     set((s) => {
+      // Skip copy + re-render if every id is already selected.
+      const toAdd = ids.filter((id) => !s.selected.has(id));
+      if (toAdd.length === 0) return s;
       const next = new Set(s.selected);
-      for (const id of ids) next.add(id);
+      for (const id of toAdd) next.add(id);
       return { selected: next };
     }),
   deselectMany: (ids) =>
     set((s) => {
+      // Skip copy + re-render if none of the ids are currently selected.
+      const toRemove = ids.filter((id) => s.selected.has(id));
+      if (toRemove.length === 0) return s;
       const next = new Set(s.selected);
-      for (const id of ids) next.delete(id);
+      for (const id of toRemove) next.delete(id);
       return { selected: next };
     }),
 }));

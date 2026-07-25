@@ -1,7 +1,6 @@
 import {
   createRootRoute,
   Outlet,
-  ScrollRestoration,
   useLocation,
 } from "@tanstack/react-router";
 import { useRef } from "react";
@@ -65,7 +64,7 @@ function RootComponent() {
         <main ref={mainRef} className="flex-grow overflow-y-auto p-6 sm:p-8">
           <Outlet />
         </main>
-        <ScrollRestoration scrollBehavior="smooth" />
+        {/*<ScrollRestoration scrollBehavior="smooth" />*/}
       </div>
     </div>
   );

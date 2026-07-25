@@ -36,11 +36,30 @@ export const MediaCard = memo(function MediaCard({
   albumId,
   onClick,
 }: MediaCardProps) {
-  const isSelected = useSelectionStore((s) => s.selected.has(item.id));
-
   const [hasError, setHasError] = useState(false);
   const [inView, setInView] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
+  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  // Transient selection: instead of subscribing reactively (which re-renders
+  // this card — and every other card — on any selection change, causing the
+  // select-all lag over 200+ items), subscribe imperatively and mutate only
+  // this card's own DOM node. Zero React re-renders when selection changes.
+  useEffect(() => {
+    const apply = (selected: Set<number>) => {
+      const isSel = selected.has(item.id);
+      if (cardRef.current) {
+        cardRef.current.dataset.selected = isSel ? "true" : "false";
+      }
+      if (checkboxRef.current) {
+        checkboxRef.current.checked = isSel;
+      }
+    };
+    apply(useSelectionStore.getState().selected);
+    return useSelectionStore.subscribe((state, prev) => {
+      if (state.selected !== prev.selected) apply(state.selected);
+    });
+  }, [item.id]);
 
   useEffect(() => {
     const el = cardRef.current;
@@ -97,11 +116,10 @@ export const MediaCard = memo(function MediaCard({
       params={{ id: String(item.id) }}
       search={albumId ? { albumId } : undefined}
       onClick={handleClick}
-      className={`group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-[box-shadow,border-color] duration-300 hover:shadow-2xl cursor-pointer ${
-        isSelected
-          ? "ring-2 ring-primary border-primary"
-          : "border-base-200 hover:border-base-300"
-      }`}
+      data-selected={
+        useSelectionStore.getState().selected.has(item.id) ? "true" : "false"
+      }
+      className="group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-[box-shadow,border-color] duration-300 hover:shadow-2xl cursor-pointer border-base-200 hover:border-base-300 data-[selected=true]:ring-2 data-[selected=true]:ring-primary data-[selected=true]:border-primary data-[selected=true]:hover:border-primary"
     >
       {/* Media content */}
       <div className="absolute inset-0 flex items-center justify-center bg-base-300">
@@ -144,8 +162,9 @@ export const MediaCard = memo(function MediaCard({
       {/* Selection checkbox */}
       <div className="absolute top-3 left-3 z-30 opacity-0 scale-75 pointer-events-none transition-[opacity,transform] duration-150 [.is-selecting_&]:opacity-100 [.is-selecting_&]:scale-100 [.is-selecting_&]:pointer-events-auto">
         <input
+          ref={checkboxRef}
           type="checkbox"
-          checked={isSelected}
+          defaultChecked={useSelectionStore.getState().selected.has(item.id)}
           readOnly
           className="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg"
         />

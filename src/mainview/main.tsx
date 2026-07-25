@@ -1,3 +1,5 @@
+import { scan } from "react-scan/all-environments";
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -10,6 +12,11 @@ import "./index.css";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
+
+// Enable when loaded from the Vite HMR dev server (not the built views:// bundle)
+// if (window.location.protocol === "http:") {
+scan({ enabled: true });
+// }
 
 // Silence two known-benign console errors that are just noise here:
 // 1. "ResizeObserver loop completed with undelivered notifications" — fired by

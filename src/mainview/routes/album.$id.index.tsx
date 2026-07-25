@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
@@ -56,6 +56,155 @@ function chunk<T>(arr: T[], size: number): T[][] {
     result.push(arr.slice(i, i + size));
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Isolated selection components — each reads only what it needs from the store
+// so that selection changes never trigger a re-render in AlbumDetailComponent
+// or LegendList.
+// ---------------------------------------------------------------------------
+
+const SelectionControls = memo(function SelectionControls({
+  mediaItems,
+  onStart,
+  onCancel,
+}: {
+  mediaItems: MediaItem[];
+  onStart: () => void;
+  onCancel: () => void;
+}) {
+  const isSelecting = useSelectionStore((s) => s.isSelecting);
+  const selectMany = useSelectionStore((s) => s.selectMany);
+  const deselectMany = useSelectionStore((s) => s.deselectMany);
+  // Compute all-selected without subscribing to the whole Set — only changes
+  // when the result flips between true/false, not on every individual toggle.
+  const allSelected = useSelectionStore(
+    (s) =>
+      mediaItems.length > 0 && mediaItems.every((item) => s.selected.has(item.id)),
+  );
+
+  return (
+    <>
+      {isSelecting && mediaItems.length > 0 && (
+        <button
+          onClick={() => {
+            if (allSelected) deselectMany(mediaItems.map((item) => item.id));
+            else selectMany(mediaItems.map((item) => item.id));
+          }}
+          className="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
+        >
+          {allSelected ? "Deselect All" : "Select All"}
+        </button>
+      )}
+      <button
+        onClick={() => (isSelecting ? onCancel() : onStart())}
+        className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
+          isSelecting
+            ? "btn-secondary text-secondary-content"
+            : "btn-outline border-base-300 text-base-content/80"
+        }`}
+      >
+        {isSelecting ? "Cancel" : "Select Items"}
+      </button>
+    </>
+  );
+});
+
+const SelectionFloatingBar = memo(function SelectionFloatingBar({
+  onMove,
+  onDelete,
+  onClear,
+}: {
+  onMove: (ids: number[]) => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  const isSelecting = useSelectionStore((s) => s.isSelecting);
+  const selectedCount = useSelectionStore((s) => s.selected.size);
+
+  if (!isSelecting || selectedCount === 0) return null;
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
+      <div className="text-sm font-bold text-base-content">
+        <span className="text-primary mr-1.5">{selectedCount}</span>
+        {selectedCount === 1 ? "item" : "items"} selected
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={onClear}
+          className="btn btn-xs btn-ghost text-base-content/60 hover:text-base-content font-medium"
+        >
+          Clear
+        </button>
+        <button
+          onClick={onDelete}
+          className="btn btn-xs btn-outline btn-error font-bold flex items-center gap-1 cursor-pointer"
+        >
+          <Trash className="w-3.5 h-3.5" /> Delete
+        </button>
+        <button
+          onClick={() => {
+            const ids = Array.from(useSelectionStore.getState().selected);
+            onMove(ids);
+          }}
+          className="btn btn-xs btn-primary font-bold shadow-lg shadow-primary/25 flex items-center gap-1 cursor-pointer"
+        >
+          <FolderPlus className="w-3.5 h-3.5" /> Move to Album
+        </button>
+      </div>
+    </div>
+  );
+});
+
+// Wraps LegendList and applies the is-selecting CSS class so MediaCard's
+// CSS selectors ([.is-selecting_&]:...) still work without renderMediaRow
+// depending on isSelecting.
+const SelectableMediaGrid = memo(function SelectableMediaGrid({
+  data,
+  renderItem,
+}: {
+  data: MediaItem[][];
+  renderItem: ({ item }: { item: MediaItem[] }) => React.ReactNode;
+}) {
+  const isSelecting = useSelectionStore((s) => s.isSelecting);
+  return (
+    <div className={isSelecting ? "is-selecting" : ""}>
+      <LegendList<MediaItem[]>
+        data={data}
+        estimatedItemSize={290}
+        keyExtractor={(_: MediaItem[], index: number) => `row-${index}`}
+        renderItem={renderItem}
+      />
+    </div>
+  );
+});
+
+// Reads selectedCount for the delete dialog body without the parent needing to.
+const DeleteDialogBody = memo(function DeleteDialogBody() {
+  const selectedCount = useSelectionStore((s) => s.selected.size);
+  return (
+    <div className="space-y-3 text-left">
+      <p className="text-xs text-base-content/70 leading-relaxed">
+        Are you sure you want to permanently delete the{" "}
+        <span className="font-bold text-base-content">{selectedCount}</span>{" "}
+        selected media file{selectedCount === 1 ? "" : "s"}?
+      </p>
+      <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
+        <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <div>
+          <span className="font-bold block mb-0.5">Warning: Permanent Deletion</span>
+          This will physically delete the selected files from your disk and
+          database cache. This action <span className="font-bold">cannot</span> be
+          undone.
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Main page component — reads nothing reactive from the selection store.
+// ---------------------------------------------------------------------------
 
 function AlbumDetailComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
@@ -125,14 +274,12 @@ function AlbumDetailComponent() {
     enabled: !!selectedDrive?.path && !isNaN(albumId),
   });
 
-  const isSelecting = useSelectionStore((s) => s.isSelecting);
-  const selectedItems = useSelectionStore((s) => s.selected);
-  const selectedCount = useSelectionStore((s) => s.selected.size);
+  // Only read stable action functions from the store — these never change
+  // reference so they don't trigger re-renders.
   const startSelection = useSelectionStore((s) => s.start);
   const cancelSelection = useSelectionStore((s) => s.cancel);
   const clearSelection = useSelectionStore((s) => s.clear);
-  const selectMany = useSelectionStore((s) => s.selectMany);
-  const deselectMany = useSelectionStore((s) => s.deselectMany);
+
   const moveModalRef = useRef<MoveModalHandle>(null);
   const deleteModalRef = useRef<ModalHandle>(null);
 
@@ -143,9 +290,7 @@ function AlbumDetailComponent() {
         drivePath: selectedDrive.path,
         mediaIds,
       });
-      if (!res.success) {
-        throw new Error(res.error || "Failed to delete items");
-      }
+      if (!res.success) throw new Error(res.error || "Failed to delete items");
       return res.deletedCount;
     },
     onSuccess: (deletedCount) => {
@@ -226,11 +371,10 @@ function AlbumDetailComponent() {
     cancelSelection();
   }, [cancelSelection]);
 
+  // isSelecting removed from deps — the class is now applied by SelectableMediaGrid.
   const renderMediaRow = useCallback(
     ({ item: rowItems }: { item: MediaItem[] }) => (
-      <div
-        className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4 ${isSelecting ? "is-selecting" : ""}`}
-      >
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
         {rowItems.map((item) => (
           <MediaCard
             key={item.id}
@@ -245,7 +389,7 @@ function AlbumDetailComponent() {
           ))}
       </div>
     ),
-    [selectedDrive?.path, albumId, isSelecting],
+    [selectedDrive?.path, albumId],
   );
 
   if (!selectedDrive) {
@@ -281,8 +425,7 @@ function AlbumDetailComponent() {
           {selectedDrive.name} is Unmounted
         </h3>
         <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
-          This storage device needs to be mounted before you can view its
-          albums.
+          This storage device needs to be mounted before you can view its albums.
         </p>
         <button
           onClick={async () => {
@@ -349,11 +492,8 @@ function AlbumDetailComponent() {
       </div>
 
       {/* Album Header */}
-      <div
-        className="p-6 rounded-2xl bg-linear-0 from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4
-        sticky top-0 z-20 bg-base-200/70 backdrop-blur-xs"
-      >
-        <div className="flex items-center gap-4 ">
+      <div className="p-6 rounded-2xl bg-linear-0 from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 bg-base-200/70 backdrop-blur-xs">
+        <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
             <FolderOpen className="w-6 h-6 text-primary-content" />
           </div>
@@ -378,51 +518,21 @@ function AlbumDetailComponent() {
               </span>
             </div>
           )}
-
-          {isSelecting && mediaItems.length > 0 && (
-            <button
-              onClick={() => {
-                const allSelected = mediaItems.every((item) =>
-                  selectedItems.has(item.id),
-                );
-                if (allSelected) {
-                  deselectMany(mediaItems.map((item) => item.id));
-                } else {
-                  selectMany(mediaItems.map((item) => item.id));
-                }
-              }}
-              className="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
-            >
-              {mediaItems.every((item) => selectedItems.has(item.id))
-                ? "Deselect All"
-                : "Select All"}
-            </button>
-          )}
-
-          <button
-            onClick={() => {
-              if (isSelecting) cancelSelection();
-              else startSelection();
-            }}
-            className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
-              isSelecting
-                ? "btn-secondary text-secondary-content"
-                : "btn-outline border-base-300 text-base-content/80"
-            }`}
-          >
-            {isSelecting ? "Cancel" : "Select Items"}
-          </button>
+          <SelectionControls
+            mediaItems={mediaItems}
+            onStart={startSelection}
+            onCancel={cancelSelection}
+          />
         </div>
       </div>
 
       {/* Filter, Search & Sort Bar */}
-      <div className=" border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between ">
+      <div className="border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="w-full md:max-w-xs">
           <SearchBar value={search} onChange={setSearchQuery} />
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* File Type Filter Tabs */}
           <div className="tabs tabs-boxed bg-base-300 border border-base-200/50 p-0.5">
             <button
               onClick={() => handleFilterChange("all")}
@@ -444,11 +554,8 @@ function AlbumDetailComponent() {
             </button>
           </div>
 
-          {/* Sort By Dropdown */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-base-content/60 font-semibold">
-              Sort:
-            </span>
+            <span className="text-xs text-base-content/60 font-semibold">Sort:</span>
             <select
               value={sortBy}
               onChange={(e) =>
@@ -462,7 +569,6 @@ function AlbumDetailComponent() {
             </select>
           </div>
 
-          {/* Sort Direction Toggle */}
           <button
             onClick={toggleSortOrder}
             className="btn btn-sm btn-outline border-base-300 text-base-content/80 hover:bg-base-100 px-2 cursor-pointer font-bold flex items-center gap-1"
@@ -489,21 +595,15 @@ function AlbumDetailComponent() {
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-base-content/60 font-medium">
-            Items per page:
-          </span>
+          <span className="text-xs text-base-content/60 font-medium">Items per page:</span>
           <select
             value={limit}
             onChange={(e) => handleLimitChange(Number(e.target.value))}
             className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60 cursor-pointer"
           >
-            {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map(
-              (val) => (
-                <option key={val} value={val}>
-                  {val}
-                </option>
-              ),
-            )}
+            {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map((val) => (
+              <option key={val} value={val}>{val}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -512,9 +612,7 @@ function AlbumDetailComponent() {
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[40vh] py-12">
           <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-xs text-base-content/40 font-bold">
-            Loading Album Content...
-          </p>
+          <p className="text-xs text-base-content/40 font-bold">Loading Album Content...</p>
         </div>
       ) : mediaItems.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
@@ -525,12 +623,7 @@ function AlbumDetailComponent() {
           </p>
         </div>
       ) : (
-        <LegendList<MediaItem[]>
-          data={chunkedMedias}
-          estimatedItemSize={290}
-          keyExtractor={(_: MediaItem[], index: number) => `row-${index}`}
-          renderItem={renderMediaRow}
-        />
+        <SelectableMediaGrid data={chunkedMedias} renderItem={renderMediaRow} />
       )}
 
       <Pagination
@@ -541,36 +634,11 @@ function AlbumDetailComponent() {
       />
 
       {/* Selection Floating Bar */}
-      {isSelecting && selectedCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
-          <div className="text-sm font-bold text-base-content">
-            <span className="text-primary mr-1.5">{selectedCount}</span>
-            {selectedCount === 1 ? "item" : "items"} selected
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={clearSelection}
-              className="btn btn-xs btn-ghost text-base-content/60 hover:text-base-content font-medium"
-            >
-              Clear
-            </button>
-            <button
-              onClick={() => deleteModalRef.current?.open()}
-              className="btn btn-xs btn-outline btn-error font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <Trash className="w-3.5 h-3.5" /> Delete
-            </button>
-            <button
-              onClick={() =>
-                moveModalRef.current?.open(Array.from(selectedItems))
-              }
-              className="btn btn-xs btn-primary font-bold shadow-lg shadow-primary/25 flex items-center gap-1 cursor-pointer"
-            >
-              <FolderPlus className="w-3.5 h-3.5" /> Move to Album
-            </button>
-          </div>
-        </div>
-      )}
+      <SelectionFloatingBar
+        onMove={(ids) => moveModalRef.current?.open(ids)}
+        onDelete={() => deleteModalRef.current?.open()}
+        onClear={clearSelection}
+      />
 
       <MoveToAlbumModal
         ref={moveModalRef}
@@ -579,7 +647,6 @@ function AlbumDetailComponent() {
         onSuccess={handleMoveSuccess}
       />
 
-      {/* Delete Media Confirmation Dialog Modal */}
       <DialogModal
         ref={deleteModalRef}
         title="Delete Media Items"
@@ -601,31 +668,12 @@ function AlbumDetailComponent() {
               disabled={deleteMediaMutation.isPending}
               className="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
             >
-              {deleteMediaMutation.isPending
-                ? "Deleting..."
-                : "Delete Permanently"}
+              {deleteMediaMutation.isPending ? "Deleting..." : "Delete Permanently"}
             </button>
           </>
         }
       >
-        <div className="space-y-3 text-left">
-          <p className="text-xs text-base-content/70 leading-relaxed">
-            Are you sure you want to permanently delete the{" "}
-            <span className="font-bold text-base-content">{selectedCount}</span>{" "}
-            selected media file{selectedCount === 1 ? "" : "s"}?
-          </p>
-          <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
-            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold block mb-0.5">
-                Warning: Permanent Deletion
-              </span>
-              This will physically delete the selected files from your disk and
-              database cache. This action{" "}
-              <span className="font-bold">cannot</span> be undone.
-            </div>
-          </div>
-        </div>
+        <DeleteDialogBody />
       </DialogModal>
     </div>
   );

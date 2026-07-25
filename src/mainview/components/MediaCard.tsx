@@ -7,7 +7,6 @@ import {
   Folder,
 } from "lucide-react";
 import { useSelectionStore } from "@/store/selection_store";
-import { useShallow } from "zustand/shallow";
 
 export interface MediaItem {
   id: number;
@@ -37,12 +36,7 @@ export const MediaCard = memo(function MediaCard({
   albumId,
   onClick,
 }: MediaCardProps) {
-  const { isSelecting, isSelected } = useSelectionStore(
-    useShallow((s) => ({
-      isSelecting: s.isSelecting,
-      isSelected: s.selected.has(item.id),
-    })),
-  );
+  const isSelected = useSelectionStore((s) => s.selected.has(item.id));
 
   const [hasError, setHasError] = useState(false);
   const [inView, setInView] = useState(false);
@@ -84,15 +78,16 @@ export const MediaCard = memo(function MediaCard({
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
+      const { isSelecting, toggle } = useSelectionStore.getState();
       if (isSelecting) {
         e.preventDefault();
         e.stopPropagation();
-        useSelectionStore.getState().toggle(item.id);
+        toggle(item.id);
       } else if (onClick) {
         onClick(e);
       }
     },
-    [isSelecting, item.id, onClick],
+    [item.id, onClick],
   );
 
   return (
@@ -102,7 +97,7 @@ export const MediaCard = memo(function MediaCard({
       params={{ id: String(item.id) }}
       search={albumId ? { albumId } : undefined}
       onClick={handleClick}
-      className={`group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl cursor-pointer ${
+      className={`group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-[box-shadow,border-color] duration-300 hover:shadow-2xl cursor-pointer ${
         isSelected
           ? "ring-2 ring-primary border-primary"
           : "border-base-200 hover:border-base-300"
@@ -126,7 +121,7 @@ export const MediaCard = memo(function MediaCard({
             src={thumbUrl}
             alt={fileName}
             onError={() => setHasError(true)}
-            className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
+            className="w-full h-full object-cover transition-transform duration-300 opacity-100 group-hover:scale-105"
           />
         ) : (
           <div className="w-full h-full animate-pulse bg-base-200/40" />
@@ -147,20 +142,18 @@ export const MediaCard = memo(function MediaCard({
       </div>
 
       {/* Selection checkbox */}
-      {isSelecting && (
-        <div className="absolute top-3 left-3 z-30">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            readOnly
-            className="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg transition-all"
-          />
-        </div>
-      )}
+      <div className="absolute top-3 left-3 z-30 opacity-0 scale-75 pointer-events-none transition-[opacity,transform] duration-150 [.is-selecting_&]:opacity-100 [.is-selecting_&]:scale-100 [.is-selecting_&]:pointer-events-auto">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          readOnly
+          className="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg"
+        />
+      </div>
 
-      {/* Album badge — top left, fades on hover */}
-      {item.album_name && !isSelecting && (
-        <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] group-hover:opacity-0 transition-opacity duration-200 flex items-center gap-1">
+      {/* Album badge — top left, fades on hover and when selecting */}
+      {item.album_name && (
+        <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] group-hover:opacity-0 [.is-selecting_&]:opacity-0 transition-opacity duration-200 flex items-center gap-1">
           <Folder className="w-2.5 h-2.5 text-primary fill-primary/10 shrink-0" />
           <span className="truncate">
             {item.album_name === "unknown" ? "Unsorted Media" : item.album_name}

@@ -67,6 +67,8 @@ export interface MainRPC extends ElectrobunRPCSchema {
 					offset: number;
 					search?: string;
 					filter?: "all" | "images" | "videos";
+					sortBy?: "date" | "name" | "size";
+					sortOrder?: "asc" | "desc";
 				};
 				response: {
 					items: {

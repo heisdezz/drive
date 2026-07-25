@@ -21,10 +21,14 @@ export const miscHandlers: Pick<
 				throw new Error(`File not found: ${fullPath}`);
 			}
 
-			// mpv bundles its own ffmpeg-based decoder, so it plays media
-			// without relying on the system GStreamer stack that WebKit uses.
-			// Fall back to the desktop default handler if mpv is unavailable.
-			const player = Bun.which("mpv") ? "mpv" : "xdg-open";
+			// Prefer Haruna or VLC media players, then mpv, then desktop default.
+			const player = Bun.which("haruna")
+				? "haruna"
+				: Bun.which("vlc")
+				? "vlc"
+				: Bun.which("mpv")
+				? "mpv"
+				: "xdg-open";
 			const proc = Bun.spawn([player, fullPath], {
 				stdout: "ignore",
 				stderr: "ignore",

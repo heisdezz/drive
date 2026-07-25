@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid, Loader2 } from "lucide-react";
 import { rpc } from "@/lib/rpc";
 import { MediaCard, type MediaItem } from "@/components/MediaCard";
+import { useSelectionStore } from "@/store/selection_store";
 
 interface RelatedMediaProps {
   itemId: number;
@@ -9,6 +10,8 @@ interface RelatedMediaProps {
 }
 
 export default function RelatedMedia({ itemId, drivePath }: RelatedMediaProps) {
+  const isSelecting = useSelectionStore((s) => s.isSelecting);
+
   const { data, isLoading } = useQuery({
     queryKey: ["relatedMedia", drivePath, itemId],
     queryFn: () =>
@@ -46,7 +49,7 @@ export default function RelatedMedia({ itemId, drivePath }: RelatedMediaProps) {
         </div>
       ) : (
         <div
-          className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity duration-300 ${isLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}
+          className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity duration-300 ${isLoading ? "opacity-40 pointer-events-none" : "opacity-100"} ${isSelecting ? "is-selecting" : ""}`}
         >
           {related.map((r) => (
             <MediaCard key={r.id} item={r} drivePath={drivePath} />

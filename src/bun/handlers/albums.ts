@@ -118,7 +118,7 @@ export const albumHandlers: Pick<
 				countSql += " AND mime_type LIKE 'image/%'";
 			} else if (filter === "videos") {
 				sql += " AND m.mime_type LIKE 'video/%'";
-				countSql += " AND m.mime_type LIKE 'video/%'";
+				countSql += " AND mime_type LIKE 'video/%'";
 			}
 
 			// Dynamic but secure whitelist ordering

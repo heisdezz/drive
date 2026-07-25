@@ -119,14 +119,14 @@ export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
                translateZ(0) keeps this control on its own compositing layer. */
             style={{ transform: "translateZ(0)" }}
             className="absolute top-3 right-3 z-10 btn btn-xs btn-ghost bg-base-300/90 border border-base-300 text-base-content/80 hover:text-base-content font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Open in your system player (mpv)"
+            title="Open in external player (Haruna, VLC, or system player)"
           >
             {launching ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <ExternalLink className="w-3.5 h-3.5" />
             )}
-            <span className="hidden sm:inline">External Player</span>
+            <span className="hidden sm:inline">Open in Haruna / VLC</span>
           </button>
           {launchError && (
             <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20">

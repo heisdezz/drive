@@ -14,6 +14,11 @@ type Source = "server" | "file";
 function VideoTest() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [source, setSource] = useState<Source>("server");
+  // Draft holds what's currently typed; `filePath` is the committed path the
+  // video actually loads (only updated on submit) so we don't reload on every
+  // keystroke.
+  const [draftPath, setDraftPath] = useState(TEST_FILE);
+  const [filePath, setFilePath] = useState(TEST_FILE);
   const [logs, setLogs] = useState<string[]>([]);
   const [info, setInfo] = useState({
     readyState: 0,
@@ -24,8 +29,8 @@ function VideoTest() {
     buffered: "",
   });
 
-  const serverUrl = `${MEDIA_SERVER}/media?path=${encodeURIComponent(TEST_FILE)}`;
-  const fileUrl = `file://${TEST_FILE}`;
+  const serverUrl = `${MEDIA_SERVER}/media?path=${encodeURIComponent(filePath)}`;
+  const fileUrl = `file://${filePath}`;
   const src = source === "server" ? serverUrl : fileUrl;
 
   const log = (msg: string) =>
@@ -113,6 +118,31 @@ function VideoTest() {
           issues.
         </p>
       </div>
+
+      {/* File path input */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setFilePath(draftPath.trim());
+        }}
+        className="flex items-center gap-2"
+      >
+        <input
+          type="text"
+          value={draftPath}
+          onChange={(e) => setDraftPath(e.target.value)}
+          placeholder="/absolute/path/to/video.mp4"
+          spellCheck={false}
+          className="input input-sm input-bordered flex-1 font-mono text-xs"
+        />
+        <button
+          type="submit"
+          disabled={!draftPath.trim() || draftPath.trim() === filePath}
+          className="btn btn-sm btn-primary"
+        >
+          Load
+        </button>
+      </form>
 
       {/* Source toggle */}
       <div className="flex items-center gap-2">

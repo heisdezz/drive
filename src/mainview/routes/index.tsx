@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useDriveStore } from "@/store/drive_store";
+import { useSelectionStore } from "@/store/selection_store";
 import { rpc } from "@/lib/rpc";
 import { MediaCard } from "@/components/MediaCard";
 import {
@@ -85,6 +86,7 @@ function AlbumCard({ album, drivePath }: AlbumCardProps) {
 }
 
 function Index() {
+  const isSelecting = useSelectionStore((s) => s.isSelecting);
   const {
     selectedDrive,
     devices,
@@ -570,7 +572,9 @@ function Index() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-4">
+          <div
+            className={`grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-4 ${isSelecting ? "is-selecting" : ""}`}
+          >
             {mediaItems.map((item) => (
               <MediaCard
                 key={item.id}

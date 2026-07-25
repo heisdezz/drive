@@ -24,6 +24,8 @@ interface MediaSearch {
   page?: number;
   search?: string;
   filter?: "all" | "images" | "videos";
+  sortBy?: "date" | "name" | "size";
+  sortOrder?: "asc" | "desc";
 }
 
 export const Route = createFileRoute("/medias/")({
@@ -33,6 +35,8 @@ export const Route = createFileRoute("/medias/")({
       page: Number(search.page) || 0,
       search: (search.search as string) || "",
       filter: (search.filter as "all" | "images" | "videos") || "all",
+      sortBy: (search.sortBy as "date" | "name" | "size") || "date",
+      sortOrder: (search.sortOrder as "asc" | "desc") || "desc",
     };
   },
 });
@@ -46,12 +50,26 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 function MediasComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
-  const { page = 0, search = "", filter = "all" } = Route.useSearch();
+  const {
+    page = 0,
+    search = "",
+    filter = "all",
+    sortBy = "date",
+    sortOrder = "desc",
+  } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const itemsPerPage = 24;
 
   const { mediaItems, totalItems, loading, scanStatus, refresh } =
-    useMediaCatalog(selectedDrive?.path, page, itemsPerPage, search, filter);
+    useMediaCatalog(
+      selectedDrive?.path,
+      page,
+      itemsPerPage,
+      search,
+      filter,
+      sortBy,
+      sortOrder,
+    );
 
   const isSelecting = useSelectionStore((s) => s.isSelecting);
   const selectedItems = useSelectionStore((s) => s.selected);
@@ -161,13 +179,33 @@ function MediasComponent() {
     [navigate],
   );
 
+  const setSortBy = useCallback(
+    (newSortBy: "date" | "name" | "size") =>
+      navigate({ search: (prev) => ({ ...prev, sortBy: newSortBy, page: 0 }) }),
+    [navigate],
+  );
+
+  const toggleSortOrder = useCallback(
+    () =>
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
+          page: 0,
+        }),
+      }),
+    [navigate],
+  );
+
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   const chunkedMedias = useMemo(() => chunk(mediaItems, 4), [mediaItems]);
 
   const renderMediaRow = useCallback(
     ({ item: rowItems }: { item: MediaItem[] }) => (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+      <div
+        className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4 ${isSelecting ? "is-selecting" : ""}`}
+      >
         {rowItems.map((item: MediaItem) => (
           <MediaCard
             key={item.id}
@@ -181,7 +219,7 @@ function MediasComponent() {
           ))}
       </div>
     ),
-    [selectedDrive?.path],
+    [selectedDrive?.path, isSelecting],
   );
 
   // Case 1: No drive is selected
@@ -323,6 +361,11 @@ function MediasComponent() {
         onSearchChange={setSearchQuery}
         filterType={filter}
         onFilterChange={setFilterType}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
+        sortOrder={sortOrder}
+        onToggleSortOrder={toggleSortOrder}
+        totalItems={totalItems}
       />
 
       {/* Media Grid */}

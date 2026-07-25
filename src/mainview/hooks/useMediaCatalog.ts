@@ -13,6 +13,8 @@ export function useMediaCatalog(
   itemsPerPage: number,
   search?: string,
   filter?: "all" | "images" | "videos",
+  sortBy?: "date" | "name" | "size",
+  sortOrder?: "asc" | "desc",
 ) {
   const queryClient = useQueryClient();
 
@@ -24,7 +26,7 @@ export function useMediaCatalog(
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["media", drivePath, page, itemsPerPage, search, filter],
+    queryKey: ["media", drivePath, page, itemsPerPage, search, filter, sortBy, sortOrder],
     queryFn: async () => {
       const res = await rpc.request.getMediaItems({
         drivePath: drivePath!,
@@ -32,6 +34,8 @@ export function useMediaCatalog(
         offset: page * itemsPerPage,
         search: search || undefined,
         filter: filter || undefined,
+        sortBy: sortBy || undefined,
+        sortOrder: sortOrder || undefined,
       });
       if (res.error) {
         throw new Error(res.error);

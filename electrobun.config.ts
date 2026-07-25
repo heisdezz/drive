@@ -23,8 +23,7 @@ export default {
       bundleCEF: false,
     },
     linux: {
-      // bundleCEF: true,
-
+      bundleCEF: false,
       chromiumFlags: {
         "ozone-platform-hint": "auto",
         // pick Wayland when available, else X11 — kills the GLX errors
@@ -36,6 +35,8 @@ export default {
         "enable-zero-copy": true,
         "enable-features":
           "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
+        "disable-web-security": true,
+        "disable-site-isolation-trials": true,
       },
     },
     win: {

@@ -17,7 +17,7 @@ export const mediaHandlers: Pick<
 	| "moveMediaItemsToAlbum"
 	| "deleteMediaItems"
 > = {
-	getMediaItems: async ({ drivePath, limit, offset, search, filter }) => {
+	getMediaItems: async ({ drivePath, limit, offset, search, filter, sortBy, sortOrder }) => {
 		let db: Database | null = null;
 		try {
 			const dbPath = path.join(drivePath, "albums", ".media_library.db");
@@ -47,10 +47,18 @@ export const mediaHandlers: Pick<
 				countSql += " AND mime_type LIKE 'image/%'";
 			} else if (filter === "videos") {
 				sql += " AND m.mime_type LIKE 'video/%'";
-				countSql += " AND m.mime_type LIKE 'video/%'";
+				countSql += " AND mime_type LIKE 'video/%'";
 			}
 
-			sql += " ORDER BY m.created_at DESC LIMIT ? OFFSET ?";
+			let orderCol = "m.created_at";
+			if (sortBy === "name") {
+				orderCol = "m.original_relative_path";
+			} else if (sortBy === "size") {
+				orderCol = "m.file_size";
+			}
+
+			const direction = sortOrder === "asc" ? "ASC" : "DESC";
+			sql += ` ORDER BY ${orderCol} ${direction} LIMIT ? OFFSET ?`;
 
 			const countParams = [...params];
 			params.push(limit, offset);

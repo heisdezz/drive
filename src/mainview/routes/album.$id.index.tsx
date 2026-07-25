@@ -228,7 +228,9 @@ function AlbumDetailComponent() {
 
   const renderMediaRow = useCallback(
     ({ item: rowItems }: { item: MediaItem[] }) => (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+      <div
+        className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4 ${isSelecting ? "is-selecting" : ""}`}
+      >
         {rowItems.map((item) => (
           <MediaCard
             key={item.id}
@@ -243,7 +245,7 @@ function AlbumDetailComponent() {
           ))}
       </div>
     ),
-    [selectedDrive?.path, albumId],
+    [selectedDrive?.path, albumId, isSelecting],
   );
 
   if (!selectedDrive) {

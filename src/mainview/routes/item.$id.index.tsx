@@ -1,22 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
-import {
-  ChevronLeft,
-  Info,
-  File,
-  FolderOpen,
-  Calendar,
-  HardDrive,
-  Loader2,
-  LayoutGrid,
-  Folder,
-  Hash,
-  Clock,
-} from "lucide-react";
-import { MediaCard, MediaItem } from "@/components/MediaCard";
+import { ChevronLeft, Info, Loader2 } from "lucide-react";
+import type { MediaItem } from "@/components/MediaCard";
 import { MediaPlayer } from "@/components/MediaPlayer";
+import RelatedMedia from "@/components/RelatedMedia";
+import VideoMetadata from "@/components/VideoMetadata";
 
 interface ItemSearch {
   albumId?: number;
@@ -31,80 +22,36 @@ export const Route = createFileRoute("/item/$id/")({
   },
 });
 
-function formatBytes(bytes: number) {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-}
-
-function formatDuration(secs: number) {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  }
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 function ItemViewerComponent() {
   const { id } = Route.useParams();
   const { albumId } = Route.useSearch();
   const navigate = useNavigate();
   const { selectedDrive } = useDriveStore();
-  const [item, setItem] = useState<MediaItem | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [related, setRelated] = useState<MediaItem[]>([]);
-  const [relatedLoading, setRelatedLoading] = useState(false);
-  const [nextId, setNextId] = useState<number | null>(null);
-  const [prevId, setPrevId] = useState<number | null>(null);
+  // useEffect(() => {
+  //   console.log("page changing");
+  // });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["mediaItem", selectedDrive?.path, id, albumId],
+    queryFn: async () => {
+      const res = await rpc.request.getMediaItem({
+        drivePath: selectedDrive!.path,
+        itemId: Number(id),
+        albumId,
+      });
+      if (res.error) throw new Error(res.error);
+      if (!res.item) throw new Error("Media item not found");
+      return res;
+    },
+    enabled: !!selectedDrive?.path,
+    retry: 3,
+    retryDelay: (attempt) => attempt * 300,
+  });
 
-  useEffect(() => {
-    if (!selectedDrive?.path) return;
+  const item = data?.item as MediaItem | undefined;
+  const nextId = data?.nextId ?? null;
+  const prevId = data?.prevId ?? null;
 
-    let active = true;
-    const loadItem = async () => {
-      setLoading(true);
-      setError(null);
-      const maxAttempts = 4;
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          const res = await rpc.request.getMediaItem({
-            drivePath: selectedDrive.path,
-            itemId: Number(id),
-            albumId,
-          });
-          if (!active) return;
-          if (res.error) setError(res.error);
-          else if (res.item) {
-            setItem(res.item);
-            setNextId(res.nextId ?? null);
-            setPrevId(res.prevId ?? null);
-          } else setError("Media item not found");
-          setLoading(false);
-          return;
-        } catch (err: any) {
-          if (!active) return;
-          if (attempt === maxAttempts) {
-            setError(err.message || "Failed to load item");
-            setLoading(false);
-            return;
-          }
-          await new Promise((r) => setTimeout(r, 300 * attempt));
-        }
-      }
-    };
-
-    loadItem();
-    return () => {
-      active = false;
-    };
-  }, [selectedDrive, id, albumId]);
-
-  // Keyboard navigation support
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -131,41 +78,19 @@ function ItemViewerComponent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nextId, prevId, albumId, navigate]);
 
-  useEffect(() => {
-    if (!selectedDrive?.path) return;
-
-    let active = true;
-    const loadRelated = async () => {
-      setRelatedLoading(true);
-      try {
-        const res = await rpc.request.getRelatedMedia({
-          drivePath: selectedDrive.path,
-          itemId: Number(id),
-          limit: 12,
-        });
-        if (active && res.items) setRelated(res.items);
-      } catch (err) {
-        console.error("Failed to load related media:", err);
-      } finally {
-        if (active) setRelatedLoading(false);
-      }
-    };
-
-    loadRelated();
-    return () => {
-      active = false;
-    };
-  }, [selectedDrive, id]);
-
   const fileName =
     item?.original_relative_path.split("/").pop() ||
     item?.original_relative_path ||
     "Media Viewer";
 
-  const mediaUrl =
-    item && selectedDrive
-      ? `http://localhost:51789/media?path=${encodeURIComponent(selectedDrive.path + "/" + item.current_relative_path)}`
-      : "";
+  // Stable URL — only changes when the actual media changes, not on background refetches.
+  const mediaUrl = useMemo(
+    () =>
+      item && selectedDrive
+        ? `http://localhost:51789/media?path=${encodeURIComponent(selectedDrive.path + "/" + item.current_relative_path)}`
+        : "",
+    [item?.id, item?.current_relative_path, selectedDrive?.path],
+  );
 
   const isVideo = item?.mime_type.startsWith("video") ?? false;
 
@@ -187,7 +112,7 @@ function ItemViewerComponent() {
     );
   }
 
-  if (loading && !item) {
+  if (isLoading && !item) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh]">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
@@ -208,7 +133,7 @@ function ItemViewerComponent() {
           Unable to Load Media
         </h3>
         <p className="text-base-content/40 text-xs mt-1 max-w-sm">
-          {error ||
+          {(error as Error)?.message ||
             "The selected media item was not found in this drive's catalog database."}
         </p>
         <Link
@@ -240,7 +165,7 @@ function ItemViewerComponent() {
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
         <span
-          className={`text-xs text-base-content/40 font-mono truncate max-w-xs md:max-w-md transition-opacity duration-300 ${loading ? "opacity-40" : "opacity-100"}`}
+          className={`text-xs text-base-content/40 font-mono truncate max-w-xs md:max-w-md transition-opacity duration-300 ${isLoading ? "opacity-40" : "opacity-100"}`}
         >
           {fileName}
         </span>
@@ -258,241 +183,21 @@ function ItemViewerComponent() {
           prevId={prevId}
           nextId={nextId}
           albumId={albumId}
-          loading={loading}
+          loading={isLoading}
         />
         {/* Right Column: Metadata Details Panel (1/3 width) */}
-        <div
-          className={`p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl space-y-6 transition-all duration-300 ${loading ? "opacity-40 pointer-events-none filter blur-[0.5px]" : "opacity-100"}`}
-        >
-          <div>
-            <h3
-              className="text-base font-black text-base-content leading-tight mb-1 truncate"
-              title={fileName}
-            >
-              {fileName}
-            </h3>
-            <span className="badge badge-sm badge-secondary font-mono font-bold uppercase tracking-wider">
-              {item.mime_type.split("/")[1] || item.mime_type}
-            </span>
-          </div>
-
-          {/* Metadata Info Cards */}
-          <div className="space-y-4 text-xs">
-            {/* File size */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <File className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  File Size
-                </span>
-                <span className="font-mono text-base-content text-xs">
-                  {formatBytes(item.file_size)}
-                </span>
-              </div>
-            </div>
-
-            {/* Scan / Creation Date */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <Calendar className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  Discovered At
-                </span>
-                <span className="text-base-content text-xs">
-                  {new Date(item.created_at).toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            {/* Album Link */}
-            {item.album_id && (
-              <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-                <Folder className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                <div className="min-w-0">
-                  <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                    Album
-                  </span>
-                  <Link
-                    to="/album/$id"
-                    params={{ id: String(item.album_id) }}
-                    className="text-primary hover:underline font-bold text-xs block truncate"
-                  >
-                    {item.album_name === "unknown"
-                      ? "Unsorted Media"
-                      : item.album_name || "Unknown Album"}
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {/* Storage Volume info */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <HardDrive className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <div className="min-w-0">
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  Storage Volume
-                </span>
-                <span className="text-base-content text-xs block truncate font-medium">
-                  {selectedDrive.name}
-                </span>
-                <span className="text-[9px] font-mono text-base-content/40 block truncate">
-                  {selectedDrive.path}
-                </span>
-              </div>
-            </div>
-
-            {/* Original Path */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <FolderOpen className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <div className="min-w-0 flex-grow">
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  Original Location
-                </span>
-                <p className="text-base-content/60 font-mono text-[10px] select-all break-all leading-normal">
-                  {item.original_relative_path}
-                </p>
-              </div>
-            </div>
-
-            {/* Active Catalog Path */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <FolderOpen className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
-              <div className="min-w-0 flex-grow">
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  Active Catalog Path
-                </span>
-                <p className="text-base-content/80 font-mono text-[10px] select-all break-all leading-normal">
-                  {item.current_relative_path}
-                </p>
-              </div>
-            </div>
-
-            {/* Full MIME Type */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <File className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  Full MIME Type
-                </span>
-                <span className="font-mono text-base-content/80 text-xs">
-                  {item.mime_type}
-                </span>
-              </div>
-            </div>
-
-            {/* File Hash */}
-            <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-              <Hash className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <div className="min-w-0">
-                <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                  File Hash Identifier
-                </span>
-                <span className="font-mono text-base-content/60 text-[10px] select-all break-all leading-normal">
-                  {item.file_hash}
-                </span>
-              </div>
-            </div>
-
-            {/* Video Duration */}
-            {item.duration_seconds !== null &&
-              item.duration_seconds !== undefined && (
-                <div className="flex gap-3 items-start border-b border-base-200/80 pb-3">
-                  <Clock className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                  <div>
-                    <span className="block text-[10px] uppercase font-bold text-base-content/40 tracking-wider">
-                      Duration
-                    </span>
-                    <span className="text-base-content text-xs">
-                      {formatDuration(item.duration_seconds)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-            {/* Embedded Metadata JSON */}
-            {(() => {
-              let extraMeta: Record<string, any> = {};
-              if (item.metadata_json) {
-                try {
-                  extraMeta = JSON.parse(item.metadata_json);
-                } catch (e) {
-                  // Ignore
-                }
-              }
-              const keys = Object.keys(extraMeta);
-              if (keys.length === 0) return null;
-              return (
-                <div className="border-t border-base-200/80 pt-4 mt-4 space-y-3">
-                  <h4 className="text-[10px] uppercase font-black text-base-content/60 tracking-wider">
-                    Embedded Metadata
-                  </h4>
-                  {keys.map((key) => (
-                    <div
-                      key={key}
-                      className="flex justify-between items-start gap-2 border-b border-base-200/50 pb-1.5 last:border-0 last:pb-0"
-                    >
-                      <span className="text-base-content/40 font-mono text-[10px]">
-                        {key}
-                      </span>
-                      <span className="text-base-content font-mono text-[10px] break-all select-all text-right">
-                        {typeof extraMeta[key] === "object"
-                          ? JSON.stringify(extraMeta[key])
-                          : String(extraMeta[key])}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-
-          <Link
-            to={albumId ? "/album/$id" : "/medias"}
-            params={albumId ? { id: String(albumId) } : undefined}
-            className="btn btn-outline btn-sm w-full font-bold"
-          >
-            {albumId ? "Return to Album" : "Return to Catalog List"}
-          </Link>
-        </div>
+        <VideoMetadata
+          item={item}
+          fileName={fileName}
+          loading={isLoading}
+          albumId={albumId}
+          driveName={selectedDrive.name}
+          drivePath={selectedDrive.path}
+        />
       </div>
 
       {/* Related Media */}
-      <div className="space-y-4 pt-2">
-        <div className="flex items-center gap-2">
-          <LayoutGrid className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-black tracking-wider text-base-content/80 uppercase">
-            Related Media
-          </h3>
-          {relatedLoading ? (
-            <Loader2 className="w-3.5 h-3.5 text-base-content/40 animate-spin" />
-          ) : (
-            related.length > 0 && (
-              <span className="badge badge-sm badge-outline border-base-300 text-base-content/40 font-bold">
-                {related.length}
-              </span>
-            )
-          )}
-        </div>
-
-        {relatedLoading && related.length === 0 ? (
-          <div className="flex items-center gap-2 text-base-content/40 text-xs py-8">
-            <Loader2 className="w-4 h-4 animate-spin" /> Finding related
-            media...
-          </div>
-        ) : related.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-base-100/20 border border-base-200/50 text-base-content/30 text-xs">
-            No related media found in this folder.
-          </div>
-        ) : (
-          <div
-            className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity duration-300 ${relatedLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}
-          >
-            {related.map((r) => (
-              <MediaCard key={r.id} item={r} drivePath={selectedDrive.path} />
-            ))}
-          </div>
-        )}
-      </div>
+      <RelatedMedia itemId={Number(id)} drivePath={selectedDrive.path} />
     </div>
   );
 }

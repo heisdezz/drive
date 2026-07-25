@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { rpc } from "@/lib/rpc";
@@ -16,23 +16,33 @@ interface MediaPlayerProps {
   loading: boolean;
 }
 
-export const MediaPlayer = memo(function MediaPlayer({
-  item,
-  drivePath,
-  mediaUrl,
-  fileName,
-  isVideo,
-  prevId,
-  nextId,
-  albumId,
-  loading,
-}: MediaPlayerProps) {
+export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
+  const {
+    item,
+    drivePath,
+    mediaUrl,
+    fileName,
+    isVideo,
+    prevId,
+    nextId,
+    albumId,
+    loading,
+  } = props;
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
-  // console.log("i rerendered");
+
+  // Pause backend ffmpeg thumbnail generation while a video is actually
+  // playing so it doesn't steal CPU from the (software-decoded) playback.
+  const setThumbnailsPaused = useCallback((paused: boolean) => {
+    rpc.request.setThumbnailGenerationPaused({ paused }).catch(() => {});
+  }, []);
+
+  // Safety net: always resume when leaving the player so generation can never
+  // get stuck paused if the video is unmounted mid-playback (e.g. navigation).
   useEffect(() => {
-    console.log("i rerendered");
-  });
+    return () => setThumbnailsPaused(false);
+  }, [setThumbnailsPaused]);
+
   const openInExternalPlayer = async () => {
     setLaunching(true);
     setLaunchError(null);
@@ -50,6 +60,8 @@ export const MediaPlayer = memo(function MediaPlayer({
       setLaunching(false);
     }
   };
+
+  // return <></>;
 
   return (
     <div className="lg:col-span-2 rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl flex flex-col items-center justify-center h-[50vh] md:h-[60vh] lg:h-[65vh] p-4 relative group isolate">
@@ -91,6 +103,9 @@ export const MediaPlayer = memo(function MediaPlayer({
             controls
             autoPlay
             src={mediaUrl}
+            onPlay={() => setThumbnailsPaused(true)}
+            onPause={() => setThumbnailsPaused(false)}
+            onEnded={() => setThumbnailsPaused(false)}
             /* Promote the video to its own GPU compositing layer so overlaid
                controls composite cleanly above it (prevents WebKit ghosting). */
             style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}

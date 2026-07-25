@@ -12,21 +12,32 @@ export default {
       "dist/index.html": "views/mainview/index.html",
       "dist/assets": "views/mainview/assets",
     },
+    useAsar: true,
+    bun: {
+      entrypoint: "src/bun/index.ts",
+      external: [],
+    },
     // Ignore Vite output in watch mode — HMR handles view rebuilds separately
     watchIgnore: ["dist/**"],
     mac: {
       bundleCEF: false,
     },
     linux: {
-      bundleCEF: true,
+      // bundleCEF: true,
+
       chromiumFlags: {
-        "ozone-platform-hint": "auto", // pick Wayland when available, else X11 — kills the GLX errors
+        "ozone-platform-hint": "auto",
+        // pick Wayland when available, else X11 — kills the GLX errors
         // if "auto" still lands on X11, make it explicit instead:
         // "ozone-platform": "wayland",
-        "disable-gpu-compositing": true, // no GPU adapter here → keep compositing off the dead GPU path
+        // "disable-gpu-compositing": true, // no GPU adapter here → keep compositing off the dead GPU path
+        "ignore-gpu-blocklist": true,
+        "enable-gpu-rasterization": true,
+        "enable-zero-copy": true,
+        "enable-features":
+          "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
       },
     },
-
     win: {
       bundleCEF: false,
     },

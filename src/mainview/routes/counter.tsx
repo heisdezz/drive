@@ -6,7 +6,7 @@ export const Route = createFileRoute("/counter")({
 });
 
 const TEST_FILE =
-  "/run/media/destiny/Ventoy/albums/shakirah350/Video TikTok_7481944724199230725.mp4";
+  "/run/media/destiny/Ventoy/albums/_.mandylee._/_.mandylee.__3917513088294691661.mp4";
 const MEDIA_SERVER = "http://localhost:51789";
 
 type Source = "server" | "file";

@@ -9,19 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as CounterRouteImport } from './routes/counter'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsIndexRouteImport } from './routes/settings.index'
-import { Route as MediasIndexRouteImport } from './routes/medias.index'
-import { Route as DiscoverIndexRouteImport } from './routes/discover.index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as CounterRouteImport } from './routes/counter'
 import { Route as AlbumsIndexRouteImport } from './routes/albums.index'
-import { Route as ItemIdIndexRouteImport } from './routes/item.$id.index'
+import { Route as DiscoverIndexRouteImport } from './routes/discover.index'
+import { Route as MediasIndexRouteImport } from './routes/medias.index'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as AlbumIdIndexRouteImport } from './routes/album.$id.index'
+import { Route as ItemIdIndexRouteImport } from './routes/item.$id.index'
 
-const CounterRoute = CounterRouteImport.update({
-  id: '/counter',
-  path: '/counter',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -29,24 +29,9 @@ const AboutRoute = AboutRouteImport.update({
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/settings/',
-  path: '/settings/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MediasIndexRoute = MediasIndexRouteImport.update({
-  id: '/medias/',
-  path: '/medias/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DiscoverIndexRoute = DiscoverIndexRouteImport.update({
-  id: '/discover/',
-  path: '/discover/',
+const CounterRoute = CounterRouteImport.update({
+  id: '/counter',
+  path: '/counter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlbumsIndexRoute = AlbumsIndexRouteImport.update({
@@ -54,14 +39,29 @@ const AlbumsIndexRoute = AlbumsIndexRouteImport.update({
   path: '/albums/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ItemIdIndexRoute = ItemIdIndexRouteImport.update({
-  id: '/item/$id/',
-  path: '/item/$id/',
+const DiscoverIndexRoute = DiscoverIndexRouteImport.update({
+  id: '/discover/',
+  path: '/discover/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MediasIndexRoute = MediasIndexRouteImport.update({
+  id: '/medias/',
+  path: '/medias/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlbumIdIndexRoute = AlbumIdIndexRouteImport.update({
   id: '/album/$id/',
   path: '/album/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ItemIdIndexRoute = ItemIdIndexRouteImport.update({
+  id: '/item/$id/',
+  path: '/item/$id/',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -149,11 +149,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/counter': {
-      id: '/counter'
-      path: '/counter'
-      fullPath: '/counter'
-      preLoaderRoute: typeof CounterRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -163,32 +163,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/': {
-      id: '/settings/'
-      path: '/settings'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/medias/': {
-      id: '/medias/'
-      path: '/medias'
-      fullPath: '/medias/'
-      preLoaderRoute: typeof MediasIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/discover/': {
-      id: '/discover/'
-      path: '/discover'
-      fullPath: '/discover/'
-      preLoaderRoute: typeof DiscoverIndexRouteImport
+    '/counter': {
+      id: '/counter'
+      path: '/counter'
+      fullPath: '/counter'
+      preLoaderRoute: typeof CounterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/albums/': {
@@ -198,11 +177,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AlbumsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/item/$id/': {
-      id: '/item/$id/'
-      path: '/item/$id'
-      fullPath: '/item/$id/'
-      preLoaderRoute: typeof ItemIdIndexRouteImport
+    '/discover/': {
+      id: '/discover/'
+      path: '/discover'
+      fullPath: '/discover/'
+      preLoaderRoute: typeof DiscoverIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/medias/': {
+      id: '/medias/'
+      path: '/medias'
+      fullPath: '/medias/'
+      preLoaderRoute: typeof MediasIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/album/$id/': {
@@ -210,6 +203,13 @@ declare module '@tanstack/react-router' {
       path: '/album/$id'
       fullPath: '/album/$id/'
       preLoaderRoute: typeof AlbumIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/item/$id/': {
+      id: '/item/$id/'
+      path: '/item/$id'
+      fullPath: '/item/$id/'
+      preLoaderRoute: typeof ItemIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

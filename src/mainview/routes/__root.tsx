@@ -1,4 +1,10 @@
-import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  Outlet,
+  ScrollRestoration,
+  useLocation,
+} from "@tanstack/react-router";
+import { useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 
 export const Route = createRootRoute({
@@ -7,6 +13,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
 
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -55,9 +62,10 @@ function RootComponent() {
         </header>
 
         {/* Independent Scrollable Content Viewport */}
-        <main className="flex-grow overflow-y-auto p-6 sm:p-8">
+        <main ref={mainRef} className="flex-grow overflow-y-auto p-6 sm:p-8">
           <Outlet />
         </main>
+        <ScrollRestoration scrollBehavior="smooth" />
       </div>
     </div>
   );

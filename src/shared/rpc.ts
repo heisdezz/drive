@@ -142,6 +142,10 @@ export interface MainRPC extends ElectrobunRPCSchema {
 				params: { drivePath: string; relativePath: string };
 				response: { success: boolean; error?: string };
 			};
+			setThumbnailGenerationPaused: {
+				params: { paused: boolean };
+				response: { success: boolean };
+			};
 			getLogs: {
 				params: undefined;
 				response: {

@@ -60,7 +60,14 @@ function chunk<T>(arr: T[], size: number): T[][] {
 function AlbumDetailComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
   const { id } = Route.useParams();
-  const { page = 0, limit = 100, search = "", filter = "all", sortBy = "date", sortOrder = "desc" } = Route.useSearch();
+  const {
+    page = 0,
+    limit = 100,
+    search = "",
+    filter = "all",
+    sortBy = "date",
+    sortOrder = "desc",
+  } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const queryClient = useQueryClient();
   const albumId = Number(id);
@@ -144,13 +151,17 @@ function AlbumDetailComponent() {
     onSuccess: (deletedCount) => {
       deleteModalRef.current?.close();
       useSelectionStore.getState().cancel();
-      queryClient.invalidateQueries({ queryKey: ["album-media", selectedDrive?.path, albumId] });
-      queryClient.invalidateQueries({ queryKey: ["album", selectedDrive?.path, albumId] });
+      queryClient.invalidateQueries({
+        queryKey: ["album-media", selectedDrive?.path, albumId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["album", selectedDrive?.path, albumId],
+      });
       console.log(`Successfully deleted ${deletedCount} media items.`);
     },
     onError: (err: any) => {
       alert(err.message || "Failed to delete selected media items.");
-    }
+    },
   });
 
   const mediaItems = mediaData.items;
@@ -192,7 +203,13 @@ function AlbumDetailComponent() {
 
   const toggleSortOrder = useCallback(
     () =>
-      navigate({ search: (prev) => ({ ...prev, page: 0, sortOrder: prev.sortOrder === "asc" ? "desc" : "asc" }) }),
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          page: 0,
+          sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
+        }),
+      }),
     [navigate],
   );
 
@@ -330,8 +347,11 @@ function AlbumDetailComponent() {
       </div>
 
       {/* Album Header */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-4">
+      <div
+        className="p-6 rounded-2xl bg-linear-0 from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4
+        sticky top-0 z-20 bg-base-200/70 backdrop-blur-xs"
+      >
+        <div className="flex items-center gap-4 ">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
             <FolderOpen className="w-6 h-6 text-primary-content" />
           </div>
@@ -394,7 +414,7 @@ function AlbumDetailComponent() {
       </div>
 
       {/* Filter, Search & Sort Bar */}
-      <div className="bg-base-200/40 border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className=" border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between ">
         <div className="w-full md:max-w-xs">
           <SearchBar value={search} onChange={setSearchQuery} />
         </div>
@@ -424,10 +444,14 @@ function AlbumDetailComponent() {
 
           {/* Sort By Dropdown */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-base-content/60 font-semibold">Sort:</span>
+            <span className="text-xs text-base-content/60 font-semibold">
+              Sort:
+            </span>
             <select
               value={sortBy}
-              onChange={(e) => handleSortByChange(e.target.value as "date" | "name" | "size")}
+              onChange={(e) =>
+                handleSortByChange(e.target.value as "date" | "name" | "size")
+              }
               className="select select-bordered select-sm text-xs bg-base-100/60 border-base-300 text-base-content/80 rounded-lg focus:outline-none focus:border-primary/60 cursor-pointer"
             >
               <option value="date">Date Added</option>
@@ -575,20 +599,28 @@ function AlbumDetailComponent() {
               disabled={deleteMediaMutation.isPending}
               className="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
             >
-              {deleteMediaMutation.isPending ? "Deleting..." : "Delete Permanently"}
+              {deleteMediaMutation.isPending
+                ? "Deleting..."
+                : "Delete Permanently"}
             </button>
           </>
         }
       >
         <div className="space-y-3 text-left">
           <p className="text-xs text-base-content/70 leading-relaxed">
-            Are you sure you want to permanently delete the <span className="font-bold text-base-content">{selectedCount}</span> selected media file{selectedCount === 1 ? "" : "s"}?
+            Are you sure you want to permanently delete the{" "}
+            <span className="font-bold text-base-content">{selectedCount}</span>{" "}
+            selected media file{selectedCount === 1 ? "" : "s"}?
           </p>
           <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
             <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold block mb-0.5">Warning: Permanent Deletion</span>
-              This will physically delete the selected files from your disk and database cache. This action <span className="font-bold">cannot</span> be undone.
+              <span className="font-bold block mb-0.5">
+                Warning: Permanent Deletion
+              </span>
+              This will physically delete the selected files from your disk and
+              database cache. This action{" "}
+              <span className="font-bold">cannot</span> be undone.
             </div>
           </div>
         </div>

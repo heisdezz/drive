@@ -11,6 +11,17 @@ const VIDEO_MIME_TYPES: Record<string, string> = {
   ".avi": "video/x-msvideo",
   ".ogv": "video/ogg",
   ".ts": "video/mp2t",
+  // Windows-common formats
+  ".wmv": "video/x-ms-wmv",
+  ".asf": "video/x-ms-asf",
+  ".flv": "video/x-flv",
+  ".f4v": "video/mp4",
+  ".m2ts": "video/mp2t",
+  ".mts": "video/mp2t",
+  ".3gp": "video/3gpp",
+  ".3g2": "video/3gpp2",
+  ".rm": "application/vnd.rn-realmedia",
+  ".rmvb": "application/vnd.rn-realmedia-vbr",
 };
 
 function getVideoMimeType(filePath: string): string {
@@ -77,8 +88,17 @@ export function startMediaServer() {
               });
             }
 
-            let start = match[1] ? parseInt(match[1], 10) : 0;
-            let end = match[2] ? parseInt(match[2], 10) : total - 1;
+            let start: number;
+            let end: number;
+            if (match[1] === undefined && match[2] !== undefined) {
+              // Suffix range: "bytes=-N" means the last N bytes of the file.
+              const suffixLength = parseInt(match[2], 10);
+              start = Math.max(0, total - suffixLength);
+              end = total - 1;
+            } else {
+              start = match[1] ? parseInt(match[1], 10) : 0;
+              end = match[2] ? parseInt(match[2], 10) : total - 1;
+            }
 
             // Clamp and validate
             if (start < 0) start = 0;

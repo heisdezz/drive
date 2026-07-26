@@ -200,7 +200,8 @@ export default function Sidebar() {
               </div>
             ) : (
               devices.map((device) => {
-                const isSystemRoot = device.path === "/";
+                // Linux: path === "/"; Windows: name set to "System Drive (C:)" by getWindowsDrives
+                const isSystemRoot = device.path === "/" || device.name.startsWith("System Drive (");
                 return (
                   <div
                     key={device.id}

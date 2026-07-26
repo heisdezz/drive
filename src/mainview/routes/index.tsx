@@ -266,7 +266,9 @@ function Index() {
 
   // 1. Render empty state (select a drive)
   if (!selectedDrive) {
-    const nonSystemDevices = devices.filter((d) => d.path !== "/");
+    const nonSystemDevices = devices.filter(
+      (d) => d.path !== "/" && !d.name.startsWith("System Drive (")
+    );
     return (
       <div className="space-y-8">
         {/* Welcome Hero Card */}

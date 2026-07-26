@@ -15,10 +15,52 @@ export interface DriveInfo {
 // into every drive listing alongside the real block devices.
 export const userMountedDrives: DriveInfo[] = [];
 
+async function getWindowsDrives(): Promise<DriveInfo[]> {
+	const fsSizes = await si.fsSize();
+	const drives: DriveInfo[] = [];
+
+	// Filesystem types that are user-accessible volumes on Windows
+	const USER_FSTYPES = new Set(["NTFS", "FAT32", "exFAT", "ReFS"]);
+
+	for (const fs of fsSizes) {
+		if (!fs.mount || !fs.size || !USER_FSTYPES.has(fs.type)) continue;
+
+		// Normalize mount: "C:\" → "C:" for a stable ID
+		const letter = fs.mount.replace(/[\\/]+$/, "").toUpperCase();
+		const gb = fs.size / 1_073_741_824;
+		const size = gb >= 1000
+			? `${(gb / 1024).toFixed(1)} TB`
+			: `${Math.round(gb)} GB`;
+		const usedPercentage = fs.size > 0 ? Math.round((fs.used / fs.size) * 100) : 0;
+
+		const name = letter === "C:" ? `System Drive (${letter})` : `Drive ${letter}`;
+
+		addLog("info", `Drive: ${name} (${size})`, `mount=${fs.mount}, type=${fs.type}, used=${usedPercentage}%`);
+
+		drives.push({
+			id: letter,
+			name,
+			type: "internal",
+			size,
+			usedPercentage,
+			status: "mounted",
+			path: letter + "\\",
+		});
+	}
+
+	return drives;
+}
+
 // Backend function to list all block devices using systeminformation
 export async function getConnectedDrives(): Promise<DriveInfo[]> {
 	addLog("info", "Listing drives via systeminformation");
 	try {
+		if (process.platform === "win32") {
+			const drives = await getWindowsDrives();
+			addLog("info", `Drive scan complete (Windows). Found ${drives.length} drives. Combined with ${userMountedDrives.length} custom mounts.`);
+			return [...drives, ...userMountedDrives];
+		}
+
 		const devices = await si.blockDevices();
 
 		// We only want top-level disks, not individual partitions —

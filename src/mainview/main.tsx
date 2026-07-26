@@ -15,7 +15,7 @@ import { routeTree } from "./routeTree.gen";
 
 // Enable when loaded from the Vite HMR dev server (not the built views:// bundle)
 // if (window.location.protocol === "http:") {
-scan({ enabled: true });
+scan({ enabled: false });
 // }
 
 // Silence two known-benign console errors that are just noise here:

@@ -44,7 +44,7 @@ export interface MainRPC extends ElectrobunRPCSchema {
 				response: { success: boolean; error?: string };
 			};
 			startScan: {
-				params: { drivePath: string; folderPath: string };
+				params: { drivePath: string; folderPath: string; ignoreList?: string[] };
 				response: { success: boolean; error?: string };
 			};
 			stopScan: {
@@ -143,6 +143,10 @@ export interface MainRPC extends ElectrobunRPCSchema {
 			openExternal: {
 				params: { drivePath: string; relativePath: string };
 				response: { success: boolean; error?: string };
+			};
+			selectFolder: {
+				params: { defaultPath?: string; title?: string };
+				response: { success: boolean; folderPath?: string; error?: string };
 			};
 			setThumbnailGenerationPaused: {
 				params: { paused: boolean };

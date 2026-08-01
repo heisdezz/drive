@@ -61,8 +61,8 @@ export const scanHandlers: Pick<
 			return { success: false, error: friendlyFsError(err) };
 		}
 	},
-	startScan: async ({ drivePath, folderPath }) => {
-		addLog("info", `RPC Request: startScan invoked`, `drivePath: ${drivePath}, folderPath: ${folderPath}`);
+	startScan: async ({ drivePath, folderPath, ignoreList }) => {
+		addLog("info", `RPC Request: startScan invoked`, `drivePath: ${drivePath}, folderPath: ${folderPath}, ignoreList: ${ignoreList?.join(", ") || "none"}`);
 		try {
 			const dbPath = path.join(drivePath, "albums", ".media_library.db");
 			if (!fs.existsSync(dbPath)) {
@@ -103,7 +103,7 @@ export const scanHandlers: Pick<
 			(async () => {
 				try {
 					addLog("info", "Media scanner thread started", folderPath);
-					await walkDirectory(drivePath, folderPath, db, state!);
+					await walkDirectory(drivePath, folderPath, db, state!, ignoreList);
 				} catch (err: any) {
 					addLog("error", `Scanning process encountered error: ${err.message}`, err.stack);
 				} finally {

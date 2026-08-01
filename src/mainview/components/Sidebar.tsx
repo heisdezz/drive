@@ -43,8 +43,8 @@ export default function Sidebar() {
   return (
     <aside className="w-64 sm:w-72 flex-shrink-0 flex flex-col bg-base-100 border-r border-base-300">
       {/* App Brand Header */}
-      <div className="p-4 flex items-center justify-between border-b border-base-300 bg-base-100/50">
-        <div className="flex items-center gap-2.5">
+      <div className="p-4 flex items-center justify-between border-b border-base-300 bg-base-100/50 h-16">
+        <div className="flex items-center gap-2.5 ">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/20">
             <Zap className="w-3.5 h-3.5 text-primary-content fill-primary-content" />
           </div>
@@ -201,7 +201,9 @@ export default function Sidebar() {
             ) : (
               devices.map((device) => {
                 // Linux: path === "/"; Windows: name set to "System Drive (C:)" by getWindowsDrives
-                const isSystemRoot = device.path === "/" || device.name.startsWith("System Drive (");
+                const isSystemRoot =
+                  device.path === "/" ||
+                  device.name.startsWith("System Drive (");
                 return (
                   <div
                     key={device.id}
@@ -243,15 +245,19 @@ export default function Sidebar() {
                           System
                         </span>
                       ) : (
-                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="flex items-center gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {device.status === "unmounted" ? (
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  const res = await rpc.request.mountBlockDevice({
-                                    deviceId: device.id,
-                                  });
+                                  const res =
+                                    await rpc.request.mountBlockDevice({
+                                      deviceId: device.id,
+                                    });
                                   if (res.success && res.mountPath) {
                                     await fetchDrives();
                                   } else {

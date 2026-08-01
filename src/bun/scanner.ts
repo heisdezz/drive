@@ -20,11 +20,50 @@ export const activeScans = new Map<string, ScanState>();
 // recursion so deeply-nested trees can't build a deep async call stack, and
 // prepares its SQL statements once up front so the per-file hot path reuses
 // them rather than re-compiling the same queries thousands of times.
+function isIgnored(fileName: string, relativePath: string, ignoreList: string[] = []): boolean {
+	// Standard built-in skips
+	if (
+		fileName === "albums" ||
+		fileName.startsWith(".") ||
+		fileName === "node_modules" ||
+		fileName === "lost+found"
+	) {
+		return true;
+	}
+
+	if (!ignoreList || ignoreList.length === 0) return false;
+
+	const normFile = fileName.toLowerCase().trim();
+	const normRel = relativePath.replace(/\\/g, "/").toLowerCase().trim();
+	const relSegments = normRel.split("/");
+
+	for (const rawPattern of ignoreList) {
+		const pattern = rawPattern.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase().trim();
+		if (!pattern) continue;
+
+		// Exact file/folder name match (e.g. "temp")
+		if (normFile === pattern) return true;
+
+		// Path segment match (e.g. "temp" matching any folder in "a/b/temp/c")
+		if (relSegments.includes(pattern)) return true;
+
+		// Relative path exact or prefix match (e.g. "subfolder/ignored_dir" matching "subfolder/ignored_dir/file.jpg")
+		if (normRel === pattern || normRel.startsWith(pattern + "/")) return true;
+	}
+
+	return false;
+}
+
+// Asynchronous directory scanner. Uses an explicit directory stack instead of
+// recursion so deeply-nested trees can't build a deep async call stack, and
+// prepares its SQL statements once up front so the per-file hot path reuses
+// them rather than re-compiling the same queries thousands of times.
 export async function walkDirectory(
 	drivePath: string,
 	startDir: string,
 	db: Database,
-	scanState: ScanState
+	scanState: ScanState,
+	ignoreList: string[] = []
 ) {
 	// Prepared once, reused for every media file processed in this scan.
 	const selectExisting = db.prepare("SELECT id, file_hash, current_relative_path FROM media_items WHERE original_relative_path = ?");
@@ -57,16 +96,12 @@ export async function walkDirectory(
 					continue;
 				}
 
+				// Check custom and built-in ignore rules
+				if (isIgnored(file.name, relativePath, ignoreList)) {
+					continue;
+				}
+
 				if (file.isDirectory()) {
-					// Skip albums folder, hidden directories and dependencies
-					if (
-						file.name === "albums" ||
-						file.name.startsWith(".") ||
-						file.name === "node_modules" ||
-						file.name === "lost+found"
-					) {
-						continue;
-					}
 					dirStack.push(fullPath);
 				} else if (file.isFile()) {
 					scanState.scannedCount++;

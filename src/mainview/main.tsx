@@ -18,7 +18,7 @@ import { routeTree } from "./routeTree.gen";
 void (async () => {
   try {
     const mod = await import("react-scan/all-environments");
-    if (mod?.scan) mod.scan({ enabled: false });
+    if (mod?.scan) mod.scan({ enabled: true });
   } catch {
     // react-scan not available in built views bundle — ignore silently
   }

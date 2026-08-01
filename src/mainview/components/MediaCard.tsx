@@ -7,6 +7,7 @@ import {
   Folder,
 } from "lucide-react";
 import { useSelectionStore } from "@/store/selection_store";
+import { useSettingsStore } from "@/store/settings_store";
 
 export interface MediaItem {
   id: number;
@@ -36,6 +37,7 @@ export const MediaCard = memo(function MediaCard({
   albumId,
   onClick,
 }: MediaCardProps) {
+  const showThumbnails = useSettingsStore((state) => state.show_thumbnails);
   const [hasError, setHasError] = useState(false);
   const [inView, setInView] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
@@ -63,7 +65,7 @@ export const MediaCard = memo(function MediaCard({
 
   useEffect(() => {
     const el = cardRef.current;
-    if (!el) return;
+    if (!el || !showThumbnails) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -75,7 +77,7 @@ export const MediaCard = memo(function MediaCard({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [showThumbnails]);
 
   const isVideo = useMemo(
     () => item.mime_type.startsWith("video"),
@@ -123,14 +125,16 @@ export const MediaCard = memo(function MediaCard({
     >
       {/* Media content */}
       <div className="absolute inset-0 flex items-center justify-center bg-base-300">
-        {hasError ? (
-          <div className="flex flex-col items-center justify-center text-base-content/30 gap-2">
-            {isVideo ? (
-              <FilmIcon className="w-8 h-8" />
-            ) : (
-              <ImageIcon className="w-8 h-8" />
-            )}
-            <span className="text-[9px] font-mono truncate max-w-[80%] px-2 text-center">
+        {!showThumbnails || hasError ? (
+          <div className="flex flex-col items-center justify-center text-base-content/40 gap-2">
+            <div className={`p-4 rounded-full ${isVideo ? "bg-info/10 text-info" : "bg-secondary/10 text-secondary"}`}>
+              {isVideo ? (
+                <FilmIcon className="w-8 h-8" />
+              ) : (
+                <ImageIcon className="w-8 h-8" />
+              )}
+            </div>
+            <span className="text-[10px] font-mono truncate max-w-[80%] px-2 text-center text-base-content/60">
               {fileName}
             </span>
           </div>

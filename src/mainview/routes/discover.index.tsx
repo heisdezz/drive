@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDriveStore } from "@/store/drive_store";
+import { useSettingsStore } from "@/store/settings_store";
 import { rpc } from "@/lib/rpc";
 import {
   HardDrive,
@@ -16,6 +17,13 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  FolderMinus,
+  FolderOpen,
+  Plus,
+  X,
+  RotateCcw,
+  Shield,
+  Tag,
 } from "lucide-react";
 
 export const Route = createFileRoute("/discover/")({
@@ -32,6 +40,16 @@ function formatBytes(bytes: number) {
 
 function DiscoverComponent() {
   const { selectedDrive, fetchDrives } = useDriveStore();
+  const {
+    ignore_list,
+    addIgnorePath,
+    removeIgnorePath,
+    resetIgnoreList,
+  } = useSettingsStore();
+
+  const scanPickerRef = useRef<HTMLInputElement>(null);
+  const ignorePickerRef = useRef<HTMLInputElement>(null);
+
   const [scaffolding, setScaffolding] = useState(false);
   const [scaffoldResult, setScaffoldResult] = useState<{
     success: boolean;
@@ -40,6 +58,7 @@ function DiscoverComponent() {
 
   // Scanning states
   const [scanPath, setScanPath] = useState("");
+  const [newIgnoreInput, setNewIgnoreInput] = useState("");
   const [scanningError, setScanningError] = useState<string | null>(null);
   const [scanInitiated, setScanInitiated] = useState(false);
   const [scanStatus, setScanStatus] = useState<{
@@ -55,6 +74,55 @@ function DiscoverComponent() {
   const [page, setPage] = useState(0);
   const [itemsLoaded, setItemsLoaded] = useState(false);
   const itemsPerPage = 8;
+
+  const handleAddIgnore = () => {
+    if (newIgnoreInput.trim()) {
+      addIgnorePath(newIgnoreInput.trim());
+      setNewIgnoreInput("");
+    }
+  };
+
+  const handlePickScanFolder = async () => {
+    try {
+      const res = await rpc.request.selectFolder({
+        defaultPath: scanPath || selectedDrive?.path,
+        title: "Select Folder to Scan",
+      });
+      if (res.success && res.folderPath) {
+        setScanPath(res.folderPath);
+      } else if (res.error?.includes("cancelled")) {
+        return;
+      } else {
+        scanPickerRef.current?.click();
+      }
+    } catch (err) {
+      scanPickerRef.current?.click();
+    }
+  };
+
+  const handlePickIgnoreFolder = async () => {
+    try {
+      const res = await rpc.request.selectFolder({
+        defaultPath: selectedDrive?.path,
+        title: "Select Folder to Add to Ignorelist",
+      });
+      if (res.success && res.folderPath) {
+        const driveRoot = selectedDrive?.path || "";
+        let rel = res.folderPath;
+        if (driveRoot && res.folderPath.startsWith(driveRoot)) {
+          rel = res.folderPath.slice(driveRoot.length).replace(/^\/+|\/+$/g, "");
+        }
+        const ignoreVal = rel || res.folderPath.split("/").pop() || res.folderPath;
+        addIgnorePath(ignoreVal);
+      } else if (res.error?.includes("cancelled")) {
+        return;
+      } else {
+        ignorePickerRef.current?.click();
+      }
+    } catch (err) {
+      ignorePickerRef.current?.click();
+    }
+  };
 
   const runScaffolding = async (drivePath: string, maxAttempts = 5) => {
     setScaffolding(true);
@@ -96,6 +164,7 @@ function DiscoverComponent() {
       const res = await rpc.request.startScan({
         drivePath: selectedDrive.path,
         folderPath: targetPath,
+        ignoreList: ignore_list,
       });
       if (res.success) {
         setScanStatus((prev) => ({
@@ -253,6 +322,181 @@ function DiscoverComponent() {
     );
   }
 
+  // Hidden HTML inputs for directory pick fallback
+  const HiddenPickers = () => (
+    <>
+      <input
+        type="file"
+        ref={scanPickerRef}
+        // @ts-ignore
+        webkitdirectory=""
+        style={{ display: "none" }}
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            const first = e.target.files[0];
+            const p = (first as any).path;
+            if (p) {
+              const dir = p.substring(0, p.lastIndexOf("/"));
+              if (dir) setScanPath(dir);
+            }
+          }
+        }}
+      />
+      <input
+        type="file"
+        ref={ignorePickerRef}
+        // @ts-ignore
+        webkitdirectory=""
+        style={{ display: "none" }}
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            const first = e.target.files[0];
+            const p = (first as any).path;
+            if (p) {
+              const dir = p.substring(0, p.lastIndexOf("/"));
+              const driveRoot = selectedDrive?.path || "";
+              let rel = dir;
+              if (driveRoot && dir.startsWith(driveRoot)) {
+                rel = dir.slice(driveRoot.length).replace(/^\/+|\/+$/g, "");
+              }
+              const val = rel || dir.split("/").pop() || dir;
+              addIgnorePath(val);
+            }
+          }
+        }}
+      />
+    </>
+  );
+
+  // Common Ignorelist Section component for rendering in both views
+  const IgnoreListSection = () => (
+    <div className="p-4 rounded-xl bg-base-200/50 border border-base-300/80 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FolderMinus className="w-4 h-4 text-warning" />
+          <span className="text-xs font-bold text-base-content">
+            Folder & Path Ignorelist
+          </span>
+          <span className="badge badge-xs badge-warning font-mono font-bold">
+            {ignore_list.length} custom
+          </span>
+        </div>
+
+        <button
+          onClick={resetIgnoreList}
+          className="btn btn-ghost btn-xs text-[10px] text-base-content/40 hover:text-base-content flex items-center gap-1"
+          title="Reset to default ignore list"
+        >
+          <RotateCcw className="w-3 h-3" /> Reset Defaults
+        </button>
+      </div>
+
+      <p className="text-[10px] text-base-content/50 leading-relaxed">
+        The scanner will automatically bypass matching folder names or path segments during discovery.
+      </p>
+
+      {/* Input to add new path */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          placeholder="Add folder/path (e.g. temp, raw_dumps)"
+          value={newIgnoreInput}
+          onChange={(e) => setNewIgnoreInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleAddIgnore();
+            }
+          }}
+          disabled={scanStatus?.scanning}
+          className="input input-bordered input-xs flex-grow bg-base-100 border-base-300 text-xs text-base-content focus:border-warning"
+        />
+        <button
+          type="button"
+          onClick={handlePickIgnoreFolder}
+          disabled={scanStatus?.scanning}
+          className="btn btn-outline btn-xs px-2 border-base-300 text-base-content/70 hover:bg-base-200 flex items-center gap-1"
+          title="Browse & select folder using native file picker"
+        >
+          <FolderOpen className="w-3 h-3 text-warning" />
+          <span className="hidden sm:inline">Browse</span>
+        </button>
+        <button
+          onClick={handleAddIgnore}
+          disabled={scanStatus?.scanning || !newIgnoreInput.trim()}
+          className="btn btn-warning btn-xs px-3 font-bold flex items-center gap-1"
+        >
+          <Plus className="w-3 h-3" /> Add
+        </button>
+      </div>
+
+      {/* Preset Quick Add suggestions */}
+      <div className="flex flex-wrap gap-1.5 items-center pt-1">
+        <span className="text-[9px] font-bold text-base-content/40 uppercase tracking-wider mr-1">
+          Quick Presets:
+        </span>
+        {["temp", "cache", "raw", "backups", "archive"].map((preset) => {
+          const isAdded = ignore_list.some(
+            (item) => item.toLowerCase() === preset.toLowerCase(),
+          );
+          if (isAdded) return null;
+          return (
+            <button
+              key={preset}
+              onClick={() => addIgnorePath(preset)}
+              disabled={scanStatus?.scanning}
+              className="px-2 py-0.5 rounded-full bg-base-300/60 hover:bg-warning/20 hover:text-warning text-base-content/60 text-[9px] font-mono transition-all flex items-center gap-0.5 border border-base-300"
+            >
+              <Plus className="w-2.5 h-2.5" /> {preset}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Active Ignore Items Cloud */}
+      <div className="pt-2 border-t border-base-300/50 space-y-2">
+        {/* Built-in system skips */}
+        <div className="flex flex-wrap gap-1.5">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-base-300/40 border border-base-300 text-[10px] font-mono text-base-content/40">
+            <Shield className="w-3 h-3 text-base-content/30" />
+            <span>albums/</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-base-300/40 border border-base-300 text-[10px] font-mono text-base-content/40">
+            <Shield className="w-3 h-3 text-base-content/30" />
+            <span>node_modules/</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-base-300/40 border border-base-300 text-[10px] font-mono text-base-content/40">
+            <Shield className="w-3 h-3 text-base-content/30" />
+            <span>.* (hidden)</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-base-300/40 border border-base-300 text-[10px] font-mono text-base-content/40">
+            <Shield className="w-3 h-3 text-base-content/30" />
+            <span>lost+found</span>
+          </div>
+
+          {/* User Custom Ignore Tags */}
+          {ignore_list.map((item) => (
+            <div
+              key={item}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warning/10 border border-warning/30 text-warning text-[11px] font-mono font-semibold shadow-xs"
+            >
+              <Tag className="w-3 h-3 text-warning/70" />
+              <span>{item}</span>
+              <button
+                onClick={() => removeIgnorePath(item)}
+                disabled={scanStatus?.scanning}
+                className="hover:bg-warning/20 p-0.5 rounded transition-colors text-warning/70 hover:text-warning"
+                title={`Remove '${item}' from ignorelist`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   // Case 2: Scaffolded but database is empty and user hasn't started scan yet -> Show Discover CTA
   if (
     scaffoldResult?.success &&
@@ -262,6 +506,7 @@ function DiscoverComponent() {
   ) {
     return (
       <div className="space-y-6 max-w-5xl">
+        <HiddenPickers />
         {/* Drive Header Summary Card */}
         <div className="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
@@ -307,14 +552,27 @@ function DiscoverComponent() {
                   Folder Path to Discover
                 </span>
               </label>
-              <input
-                type="text"
-                placeholder={selectedDrive.path}
-                value={scanPath}
-                onChange={(e) => setScanPath(e.target.value)}
-                className="input input-bordered input-sm w-full bg-base-100 border-base-300 text-xs focus:border-primary text-base-content"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder={selectedDrive.path}
+                  value={scanPath}
+                  onChange={(e) => setScanPath(e.target.value)}
+                  className="input input-bordered input-sm flex-grow bg-base-100 border-base-300 text-xs focus:border-primary text-base-content"
+                />
+                <button
+                  type="button"
+                  onClick={handlePickScanFolder}
+                  className="btn btn-outline btn-sm px-3 border-base-300 text-base-content/80 hover:bg-base-200 flex items-center gap-1.5 font-bold"
+                  title="Select folder using native file picker"
+                >
+                  <FolderOpen className="w-4 h-4 text-primary" />
+                  <span>Browse</span>
+                </button>
+              </div>
             </div>
+
+            <IgnoreListSection />
           </div>
 
           <button
@@ -334,6 +592,7 @@ function DiscoverComponent() {
   // Case 3: Drive selected
   return (
     <div className="space-y-8 max-w-5xl">
+      <HiddenPickers />
       {/* Drive Header Summary Card */}
       <div className="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
@@ -398,7 +657,7 @@ function DiscoverComponent() {
                 Media
               </h3>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="form-control w-full">
                   <label className="label py-1">
                     <span className="label-text text-[10px] text-base-content/40 font-bold uppercase">
@@ -414,6 +673,16 @@ function DiscoverComponent() {
                       disabled={scanStatus?.scanning}
                       className="input input-bordered input-sm flex-grow bg-base-200 border-base-300 text-xs focus:border-primary text-base-content"
                     />
+                    <button
+                      type="button"
+                      onClick={handlePickScanFolder}
+                      disabled={scanStatus?.scanning}
+                      className="btn btn-outline btn-sm px-3 border-base-300 text-base-content/80 hover:bg-base-200 flex items-center gap-1.5 font-bold"
+                      title="Select folder using native file picker"
+                    >
+                      <FolderOpen className="w-4 h-4 text-primary" />
+                      <span className="hidden sm:inline">Browse</span>
+                    </button>
                     <button
                       onClick={startScanning}
                       disabled={scanStatus?.scanning}
@@ -431,11 +700,11 @@ function DiscoverComponent() {
                   </div>
                   <span className="text-[10px] text-base-content/40 mt-1.5 leading-normal">
                     The scanner runs recursively in the background, indexing
-                    files straight into SQLite. Subfolders named{" "}
-                    <code>albums/</code>, <code>node_modules/</code>, or hidden
-                    files are automatically skipped.
+                    files straight into SQLite. Subfolders in the ignorelist below will be automatically skipped.
                   </span>
                 </div>
+
+                <IgnoreListSection />
 
                 {scanningError && (
                   <div className="p-3 rounded-lg bg-error/10 border border-error/20 text-error text-xs flex items-center gap-2">
@@ -464,6 +733,12 @@ function DiscoverComponent() {
                     <span className="text-base-content/40">Checked Files:</span>
                     <span className="font-mono text-base-content">
                       {scanStatus?.scannedCount || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs border-b border-base-200 pb-2">
+                    <span className="text-base-content/40">Active Ignore Rules:</span>
+                    <span className="font-mono text-warning font-bold">
+                      {ignore_list.length} rules
                     </span>
                   </div>
                   <div className="flex justify-between text-xs">

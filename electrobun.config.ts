@@ -25,15 +25,15 @@ export default {
     linux: {
       bundleCEF: false,
       chromiumFlags: {
-        "ozone-platform-hint": "auto",
-        "disable-gpu": false,
-        // "ignore-gpu-blocklist": true,
-        // "enable-gpu-rasterization": true,
-        // "enable-zero-copy": true,
-        // "enable-features":
-        //   "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
-        "disable-web-security": true,
-        "disable-site-isolation-trials": true,
+        // "ozone-platform-hint": "auto",
+        "disable-gpu": true,
+        // // "ignore-gpu-blocklist": true,
+        // // "enable-gpu-rasterization": true,
+        // // "enable-zero-copy": true,
+        // // "enable-features":
+        // //   "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
+        // "disable-web-security": true,
+        // "disable-site-isolation-trials": true,
       },
     },
     win: {

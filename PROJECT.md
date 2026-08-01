@@ -169,6 +169,18 @@ When the user imports a batch of files from an staging directory (`inbox/` or cu
      - If the hashes match, delete/skip the redundant source file (de-duplication).
      - If the hashes differ, rename the incoming file (e.g., `filename_1.jpg`) and log the collision.
 
+### 4.3 Scanner Directory & Path Ignorelist
+During media discovery and cataloging, the scanner filters paths before recursion and file indexing:
+1. **System-Level Built-in Skips**:
+   - `albums/` (app library folder containing organized media and `.media_library.db`)
+   - `node_modules/` and build output folders
+   - Hidden files and folders starting with `.` (e.g. `.git`, `.Trash`, `.DS_Store`)
+   - System volume folders like `lost+found`
+2. **User-Configured Ignore Rules**:
+   - Custom folder names (e.g., `temp`, `tmp`, `Archive`, `raw_dumps`)
+   - Specific subpaths or relative path fragments (e.g. `exports/drafts`)
+   - Rules are persisted across sessions in app settings (`settings_store`) and sent to the native Bun scanner via the RPC `startScan` channel.
+
 ---
 
 ## 5. UI/UX Interface Specification
@@ -181,10 +193,13 @@ The app features a custom glassmorphic theme designed to look beautiful and high
 - Prompts the user to select the root folder on the external hard drive.
 - Verifies if `.media_library.db` exists. If not, prompts user to initialize a new library, creating the `albums/`, `albums/unknown/`, and database file.
 
-#### B. Import & Staging Area
-- Lists all files found in the source directory (e.g., a memory card or `inbox/` folder).
-- Offers quick media grid views (thumbnails for images/videos).
-- Displays status: `Ready to Assign` or `Assigned to: [Album]`.
+#### B. Discover & Scanner Control Panel
+- Lists all media catalog items registered in SQLite.
+- Interactive **Folder & Path Ignorelist**:
+  - Displays built-in system skips alongside customizable ignore tags.
+  - Inline input and quick preset buttons (`+ temp`, `+ cache`, `+ raw`, `+ backups`, `+ archive`) to easily add ignore rules.
+  - Delete badges (`✕`) and reset to default actions.
+- Real-time scanner progress stats (Checked Files, Active Ignore Rules, SQLite Cataloged Count).
 
 #### C. Tagging & Album Sidebar
 - A multi-select grid allows users to batch-apply tags.

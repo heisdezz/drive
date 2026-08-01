@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Folder, Calendar, Layers, Edit, Trash } from "lucide-react";
+import { useSettingsStore } from "@/store/settings_store";
 
 export interface PreviewItem {
   id: number;
@@ -27,10 +28,11 @@ interface AlbumCoverProps {
 }
 
 function AlbumCover({ previewItem, drivePath, albumName }: AlbumCoverProps) {
+  const showThumbnails = useSettingsStore((state) => state.show_thumbnails);
   const [hasError, setHasError] = useState(false);
 
   const displayName = albumName === "unknown" ? "Unsorted Media" : albumName;
-  const thumbUrl = previewItem
+  const thumbUrl = previewItem && showThumbnails
     ? `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(previewItem.current_relative_path)}&fileHash=${previewItem.file_hash}`
     : null;
 

@@ -27,7 +27,7 @@ const AppHeader = memo(function AppHeader() {
   };
 
   return (
-    <header className="h-12 flex-shrink-0 flex items-center justify-between px-6 border-b border-slate-900/60 bg-slate-950/20">
+    <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b border-base-300  bg-base-100">
       <div className="flex items-center gap-2">
         <span className="text-xs font-bold text-white">{getPageTitle()}</span>
         <span className="text-[10px] text-slate-500">/</span>

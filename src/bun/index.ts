@@ -3,6 +3,9 @@ import type { MainRPC } from "../shared/rpc";
 import { addLog } from "./logger";
 import { startMediaServer } from "./media-server";
 import { requestHandlers } from "./handlers";
+if (process.platform === "linux") {
+  process.env.WEBKIT_GST_DISABLE_HW_DECODERS = "1";
+}
 
 const DEV_SERVER_PORT = import.meta.env.VITE_DEV_PORT;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;

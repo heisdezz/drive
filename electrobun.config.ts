@@ -26,15 +26,12 @@ export default {
       bundleCEF: false,
       chromiumFlags: {
         "ozone-platform-hint": "auto",
-        // pick Wayland when available, else X11 — kills the GLX errors
-        // if "auto" still lands on X11, make it explicit instead:
-        // "ozone-platform": "wayland",
-        // "disable-gpu-compositing": true, // no GPU adapter here → keep compositing off the dead GPU path
-        "ignore-gpu-blocklist": true,
-        "enable-gpu-rasterization": true,
-        "enable-zero-copy": true,
-        "enable-features":
-          "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
+        "disable-gpu": false,
+        // "ignore-gpu-blocklist": true,
+        // "enable-gpu-rasterization": true,
+        // "enable-zero-copy": true,
+        // "enable-features":
+        //   "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
         "disable-web-security": true,
         "disable-site-isolation-trials": true,
       },

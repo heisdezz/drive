@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
   "scripts": {
-    "start": "vite build &&  electrobun dev",
-    "dev": "electrobun dev --watch --disable-web-security --disable-site-isolation-trials",
+    "start": "vite build && WEBKIT_GST_DISABLE_HW_DECODERS=1 electrobun dev",
+    "dev": "GST_PLUGIN_FEATURE_RANK=\"vah265dec:0,vaapih265dec:0,nvh265dec:0,v4l2h265dec:0\" WEBKIT_GST_DISABLE_HW_DECODERS=1 electrobun dev --watch --disable-web-security --disable-site-isolation-trials",
     "dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
     "hmr": "vite --port 5173",
-    "build:canary": "vite build && electrobun build --env=canary",
-    "build:stable": "vite build && electrobun build --env=stable",
+    "build:canary": "vite build && WEBKIT_GST_DISABLE_HW_DECODERS=1 electrobun build --env=canary",
+    "build:stable": "vite build && WEBKIT_GST_DISABLE_HW_DECODERS=1 electrobun build --env=stable",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

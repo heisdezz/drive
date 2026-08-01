@@ -85,10 +85,18 @@ function ItemViewerComponent() {
 
   // Stable URL — only changes when the actual media changes, not on background refetches.
   const mediaUrl = useMemo(
-    () =>
-      item && selectedDrive
-        ? `http://localhost:51789/media?path=${encodeURIComponent(selectedDrive.path + "/" + item.current_relative_path)}`
-        : "",
+    () => {
+      if (!item || !selectedDrive) return "";
+      // Properly construct path using forward slashes for HTTP URL
+      const drivePath = selectedDrive.path.replace(/\\/g, "/");
+      const mediaPath = item.current_relative_path.replace(/\\/g, "/");
+      const fullPath = drivePath.endsWith("/") 
+        ? `${drivePath}${mediaPath}`
+        : `${drivePath}/${mediaPath}`;
+      const url = `http://localhost:51789/media?path=${encodeURIComponent(fullPath)}`;
+      console.log("[MediaPlayer] Constructed URL:", url);
+      return url;
+    },
     [item?.id, item?.current_relative_path, selectedDrive?.path],
   );
 

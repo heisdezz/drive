@@ -18,9 +18,13 @@ export function addLog(level: LogEntry["level"], message: string, context?: stri
 	if (appLogs.length > 1000) {
 		appLogs.shift();
 	}
+	
+	const logMsg = `[${level.toUpperCase()}] ${message}${context ? ` (${context})` : ""}`;
+	
 	// Use queueMicrotask to avoid blocking the event loop with synchronous
 	// stdout I/O on every log call (range requests share the same event loop).
 	queueMicrotask(() => {
-		process.stdout.write(`[${level.toUpperCase()}] ${message}${context ? ` (${context})` : ""}\n`);
+		process.stdout.write(`${logMsg}\n`);
+		console.log(logMsg);
 	});
 }

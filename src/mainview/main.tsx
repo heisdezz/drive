@@ -1,4 +1,4 @@
-import { scan } from "react-scan/all-environments";
+// import { scan } from "react-scan/all-environments";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -14,9 +14,15 @@ import "./index.css";
 import { routeTree } from "./routeTree.gen";
 
 // Enable when loaded from the Vite HMR dev server (not the built views:// bundle)
-// if (window.location.protocol === "http:") {
-scan({ enabled: false });
-// }
+// Attempt to dynamically import react-scan if available; ignore failures.
+void (async () => {
+  try {
+    const mod = await import("react-scan/all-environments");
+    if (mod?.scan) mod.scan({ enabled: false });
+  } catch {
+    // react-scan not available in built views bundle — ignore silently
+  }
+})();
 
 // Silence two known-benign console errors that are just noise here:
 // 1. "ResizeObserver loop completed with undelivered notifications" — fired by

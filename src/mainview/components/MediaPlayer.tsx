@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { rpc } from "@/lib/rpc";
@@ -30,6 +30,9 @@ export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
   } = props;
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Pause backend ffmpeg thumbnail generation while a video is actually
   // playing so it doesn't steal CPU from the (software-decoded) playback.
@@ -42,6 +45,16 @@ export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
   useEffect(() => {
     return () => setThumbnailsPaused(false);
   }, [setThumbnailsPaused]);
+
+  useEffect(() => {
+    if (mediaUrl) {
+      console.log("[MediaPlayer] Video URL changed:", mediaUrl);
+      console.log("[MediaPlayer] File name:", fileName);
+      const ext = fileName?.split(".").pop()?.toLowerCase();
+      console.log("[MediaPlayer] File extension:", ext);
+      setRetryCount(0); // Reset retry counter on new URL
+    }
+  }, [mediaUrl, fileName]);
 
   const openInExternalPlayer = async () => {
     setLaunching(true);
@@ -99,13 +112,78 @@ export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
       {isVideo ? (
         <>
           <video
+            ref={videoRef}
             key={item.id}
             controls
             autoPlay
             src={mediaUrl}
-            onPlay={() => setThumbnailsPaused(true)}
-            onPause={() => setThumbnailsPaused(false)}
-            onEnded={() => setThumbnailsPaused(false)}
+            onPlay={() => {
+              console.log("[MediaPlayer] Video playing");
+              setThumbnailsPaused(true);
+            }}
+            onPause={() => {
+              console.log("[MediaPlayer] Video paused");
+              setThumbnailsPaused(false);
+            }}
+            onEnded={() => {
+              console.log("[MediaPlayer] Video ended");
+              setThumbnailsPaused(false);
+            }}
+            onError={(e) => {
+              const video = e.target as HTMLVideoElement;
+              const error = video.error;
+              const errorMsg = `Video error: Code ${error?.code} (${error?.message || 'Unknown error'})`;
+              console.error("[MediaPlayer]", errorMsg);
+              console.error("[MediaPlayer] Video src:", mediaUrl);
+               
+              // Retry logic for MEDIA_ERR_DECODE (code 3)
+              const MAX_RETRIES = 3;
+              if (error?.code === 3 && retryCount < MAX_RETRIES) {
+                const nextRetry = retryCount + 1;
+                console.log(`[MediaPlayer] Decode error, retrying (${nextRetry}/${MAX_RETRIES})...`);
+                setRetryCount(nextRetry);
+                setVideoError(`Retrying playback (${nextRetry}/${MAX_RETRIES})...`);
+                 
+                const currentTime = video.currentTime;
+                video.pause();
+                video.src = ""; // Detach to reset pipeline
+                video.load();
+                 
+                // Exponential backoff: 100ms, 200ms, 300ms
+                const backoffDelay = 100 * nextRetry;
+                setTimeout(() => {
+                  if (videoRef.current) {
+                    // Add cache-buster and retry param
+                    const retryUrl = `${mediaUrl}&retry=${nextRetry}&t=${Date.now()}`;
+                    console.log(`[MediaPlayer] Retrying with URL:`, retryUrl);
+                    videoRef.current.src = retryUrl;
+                    videoRef.current.currentTime = currentTime;
+                    videoRef.current.play().catch(err => console.error("[MediaPlayer] Retry play failed:", err));
+                  }
+                }, backoffDelay);
+              } else if (error?.code === 3) {
+                setVideoError(`${errorMsg} - Max retries exceeded`);
+              } else {
+                setVideoError(errorMsg);
+              }
+              setThumbnailsPaused(false);
+            }}
+            onLoadedMetadata={(e) => {
+              const video = e.target as HTMLVideoElement;
+              console.log("[MediaPlayer] Metadata loaded, duration:", video.duration);
+            }}
+            onLoadStart={() => console.log("[MediaPlayer] Load started")}
+            onLoadedData={() => console.log("[MediaPlayer] Data loaded")}
+            onCanPlay={() => console.log("[MediaPlayer] Can play")}
+            onCanPlayThrough={() => console.log("[MediaPlayer] Can play through")}
+            onSeeking={() => console.log("[MediaPlayer] Seeking...")}
+            onSeeked={() => console.log("[MediaPlayer] Seek completed")}
+            onStalled={() => {
+              console.warn("[MediaPlayer] Download stalled!");
+            }}
+            onSuspend={() => {
+              console.warn("[MediaPlayer] Download suspended!");
+            }}
             /* Promote the video to its own GPU compositing layer so overlaid
                controls composite cleanly above it (prevents WebKit ghosting). */
             style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
@@ -131,6 +209,11 @@ export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
           {launchError && (
             <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20">
               {launchError}
+            </p>
+          )}
+          {videoError && (
+            <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20 max-w-xs">
+              {videoError}
             </p>
           )}
         </>

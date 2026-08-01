@@ -48,6 +48,23 @@ new BrowserWindow({
     x: 200,
     y: 200,
   },
-});
+  // Disable GPU acceleration on Windows to avoid media pipeline crashes
+  // Cast to any to allow adding advanced webview flags not present in the
+  // TypeScript WindowOptions type exposed by electrobun.
+  ...( { 
+    webview: {
+      backgroundThrottling: false,
+      additionalArguments: [
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-accelerated-video-decode",
+        "--disable-accelerated-2d-canvas",
+        "--disable-software-rasterizer",
+        "--disable-gpu-sandbox",
+        "--disable-direct-composition",
+      ],
+    },
+  } as any ),
+} as any);
 
 addLog("info", "React Tailwind Vite app started!");

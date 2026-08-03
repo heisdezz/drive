@@ -1,5 +1,13 @@
 import { useState, useEffect, memo, useCallback } from "react";
-import { Search, X, LayoutGrid, Image, Film, RotateCcw, Filter } from "lucide-react";
+import {
+  Search,
+  X,
+  LayoutGrid,
+  Image,
+  Film,
+  RotateCcw,
+  Filter,
+} from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 
 interface FilterBarProps {
@@ -52,7 +60,13 @@ export const FilterBar = memo(function FilterBar({
     onFilterChange("all");
     if (onSortByChange) onSortByChange("date");
     if (onToggleSortOrder && sortOrder === "asc") onToggleSortOrder();
-  }, [handleClearSearch, onFilterChange, onSortByChange, onToggleSortOrder, sortOrder]);
+  }, [
+    handleClearSearch,
+    onFilterChange,
+    onSortByChange,
+    onToggleSortOrder,
+    sortOrder,
+  ]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +87,7 @@ export const FilterBar = memo(function FilterBar({
     sortOrder !== "desc";
 
   return (
-    <div className="p-4 rounded-2xl bg-base-200/40 backdrop-blur-md border border-base-200/80 shadow-lg flex flex-col md:flex-row gap-4 items-center justify-between transition-all duration-300">
+    <div className="p-4 rounded-2xl bg-base-200/40 backdrop-blur-xs border border-base-200/80 shadow-lg flex flex-col md:flex-row gap-4 items-center justify-between transition-all duration-300">
       {/* Left section: Filter Type Segmented Control & Active Reset Button */}
       <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
         <div className="p-1 rounded-xl bg-base-300/80 border border-base-200/60 flex items-center gap-1 shadow-inner">
@@ -140,7 +154,9 @@ export const FilterBar = memo(function FilterBar({
                 type="button"
                 onClick={onToggleSortOrder}
                 className="btn btn-sm btn-outline border-base-300 text-base-content/80 hover:bg-base-100 px-3 cursor-pointer font-bold flex items-center gap-1 rounded-xl h-9"
-                title={sortOrder === "asc" ? "Ascending order" : "Descending order"}
+                title={
+                  sortOrder === "asc" ? "Ascending order" : "Descending order"
+                }
               >
                 {sortOrder === "asc" ? (
                   <span className="text-xs">ASC ↑</span>

@@ -5,9 +5,9 @@ import { normalizePath, getVideoMimeType } from "./windows";
 
 export const MEDIA_SERVER_PORT = 51789;
 
-// 8 MB on Windows (was 2 MB — small chunks multiplied requests and hurt seek latency)
-const MAX_CHUNK_SIZE =
-  process.platform === "win32" ? 16 * 1024 * 1024 : 16 * 1024 * 1024;
+// Cap each range response. Seeking aborts the in-flight response; a bounded
+// body drains quickly so it can't bleed into the next request's byte stream.
+const MAX_CHUNK_SIZE = 50 * 1024 * 1024;
 const IDLE_TIMEOUT = 60;
 
 export function startMediaServer() {
@@ -22,8 +22,6 @@ export function startMediaServer() {
         "Access-Control-Expose-Headers":
           "Content-Range, Accept-Ranges, Content-Length, Content-Type",
         "Timing-Allow-Origin": "*",
-        Connection: "keep-alive",
-        "Keep-Alive": "timeout=5, max=100",
       };
 
       try {
@@ -93,7 +91,13 @@ export function startMediaServer() {
               }
 
               const chunkSize = end - start + 1;
-              return new Response(file.slice(start, end + 1), {
+              // Read the (capped) chunk fully into memory rather than returning
+              // a lazily-streamed file slice. Bun 1.3.13's sendfile path
+              // segfaults when a seek aborts the connection mid-stream; a
+              // materialized buffer sidesteps that crash and, being ≤8 MB,
+              // is cheap.
+              const chunk = await file.slice(start, end + 1).arrayBuffer();
+              return new Response(chunk, {
                 status: 206,
                 headers: {
                   ...corsHeaders,
@@ -112,7 +116,7 @@ export function startMediaServer() {
                 "Content-Type": contentType,
                 "Content-Length": String(total),
                 "Accept-Ranges": "bytes",
-                "Cache-Control": "public, max-age=86400",
+                "Cache-Control": "no-cache",
               },
             });
           } catch (err: any) {

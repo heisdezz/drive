@@ -112,7 +112,7 @@ const SelectionFloatingBar = memo(function SelectionFloatingBar({
   if (!isSelecting || selectedCount === 0) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-xs max-w-lg w-full justify-between">
       <div className="text-sm font-bold text-base-content">
         <span className="text-primary mr-1.5">{selectedCount}</span>
         {selectedCount === 1 ? "item" : "items"} selected
@@ -178,7 +178,9 @@ const DeleteDialogBody = memo(function DeleteDialogBody() {
       <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
         <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold block mb-0.5">Warning: Permanent Deletion</span>
+          <span className="font-bold block mb-0.5">
+            Warning: Permanent Deletion
+          </span>
           This will physically delete the selected files from your disk and
           database cache. This action <span className="font-bold">cannot</span>{" "}
           be undone.
@@ -259,7 +261,9 @@ function MediasComponent() {
   const handleOpenMoveModal = useCallback(async () => {
     if (!selectedDrive?.path) return;
     try {
-      const res = await rpc.request.getAlbums({ drivePath: selectedDrive.path });
+      const res = await rpc.request.getAlbums({
+        drivePath: selectedDrive.path,
+      });
       if (res.albums && !res.error) setAlbums(res.albums);
       modalRef.current?.open();
     } catch (err) {
@@ -361,7 +365,9 @@ function MediasComponent() {
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <Compass className="w-10 h-10 text-base-content/40 group-hover:text-primary transition-colors duration-300" />
         </div>
-        <h3 className="text-2xl font-black text-base-content mb-2">No Drive Selected</h3>
+        <h3 className="text-2xl font-black text-base-content mb-2">
+          No Drive Selected
+        </h3>
         <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
           Please select a connected drive or storage volume from the sidebar to
           inspect cataloged media files.
@@ -385,12 +391,15 @@ function MediasComponent() {
           {selectedDrive.name} is Unmounted
         </h3>
         <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
-          This storage device needs to be mounted before you can view its media files.
+          This storage device needs to be mounted before you can view its media
+          files.
         </p>
         <button
           onClick={async () => {
             try {
-              const res = await rpc.request.mountBlockDevice({ deviceId: selectedDrive.id });
+              const res = await rpc.request.mountBlockDevice({
+                deviceId: selectedDrive.id,
+              });
               if (res.success && res.mountPath) await fetchDrives();
               else alert(`Failed to mount: ${res.error}`);
             } catch (err: any) {
@@ -414,7 +423,9 @@ function MediasComponent() {
             <ImageIcon className="w-6 h-6 text-primary-content" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-base-content leading-tight">Media Catalog</h2>
+            <h2 className="text-xl font-black text-base-content leading-tight">
+              Media Catalog
+            </h2>
             <span className="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider">
               {selectedDrive.name} · {totalItems} Cataloged Items
             </span>
@@ -460,7 +471,9 @@ function MediasComponent() {
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[40vh] py-12">
           <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-xs text-base-content/40 font-bold">Querying Catalog Database...</p>
+          <p className="text-xs text-base-content/40 font-bold">
+            Querying Catalog Database...
+          </p>
         </div>
       ) : mediaItems.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
@@ -495,7 +508,10 @@ function MediasComponent() {
         actions={
           <>
             <button
-              onClick={() => { setAlbumSearchQuery(""); modalRef.current?.close(); }}
+              onClick={() => {
+                setAlbumSearchQuery("");
+                modalRef.current?.close();
+              }}
               className="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
             >
               Cancel
@@ -512,8 +528,7 @@ function MediasComponent() {
       >
         <div className="space-y-4">
           <p className="text-base-content/60 text-xs leading-relaxed">
-            Choose the target album to move the{" "}
-            <MoveModalSelectedCount />{" "}
+            Choose the target album to move the <MoveModalSelectedCount />{" "}
             selected media files to. This will physically move the files on disk
             and update their active catalog paths.
           </p>
@@ -591,7 +606,9 @@ function MediasComponent() {
               disabled={deleteMediaMutation.isPending}
               className="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
             >
-              {deleteMediaMutation.isPending ? "Deleting..." : "Delete Permanently"}
+              {deleteMediaMutation.isPending
+                ? "Deleting..."
+                : "Delete Permanently"}
             </button>
           </>
         }

@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
+//@ts-ignore
+import FPSStats from "react-fps-stats";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
@@ -18,7 +20,7 @@ import { routeTree } from "./routeTree.gen";
 void (async () => {
   try {
     const mod = await import("react-scan/all-environments");
-    if (mod?.scan) mod.scan({ enabled: true });
+    if (mod?.scan) mod.scan({ enabled: false });
   } catch {
     // react-scan not available in built views bundle — ignore silently
   }
@@ -76,6 +78,7 @@ if (!rootElement.innerHTML) {
           scrollRestoration
           scrollRestorationBehavior="smooth"
         />
+        <FPSStats />
       </QueryClientProvider>
     </StrictMode>,
   );

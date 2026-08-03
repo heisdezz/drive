@@ -32,9 +32,10 @@ function AlbumCover({ previewItem, drivePath, albumName }: AlbumCoverProps) {
   const [hasError, setHasError] = useState(false);
 
   const displayName = albumName === "unknown" ? "Unsorted Media" : albumName;
-  const thumbUrl = previewItem && showThumbnails
-    ? `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(previewItem.current_relative_path)}&fileHash=${previewItem.file_hash}`
-    : null;
+  const thumbUrl =
+    previewItem && showThumbnails
+      ? `http://localhost:51789/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(previewItem.current_relative_path)}&fileHash=${previewItem.file_hash}`
+      : null;
 
   if (thumbUrl && !hasError) {
     return (
@@ -61,12 +62,21 @@ interface AlbumCardProps {
   onDelete?: (album: Album) => void;
 }
 
-export const AlbumCard = memo(function AlbumCard({ album, drivePath, onEdit, onDelete }: AlbumCardProps) {
+export const AlbumCard = memo(function AlbumCard({
+  album,
+  drivePath,
+  onEdit,
+  onDelete,
+}: AlbumCardProps) {
   return (
     <Link
       to="/album/$id"
       params={{ id: String(album.id) }}
-      className="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer"
+      /* content-visibility skips painting offscreen cards (the album grid is
+         not virtualized); intrinsic-size reserves height so the scrollbar
+         stays stable. transition is scoped to avoid full style recalcs. */
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 320px" }}
+      className="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-[transform,box-shadow,border-color] duration-300 hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer"
     >
       <div className="aspect-[4/3] w-full relative overflow-hidden bg-base-300 flex items-center justify-center">
         <AlbumCover
@@ -74,7 +84,7 @@ export const AlbumCard = memo(function AlbumCard({ album, drivePath, onEdit, onD
           drivePath={drivePath}
           albumName={album.name}
         />
-        <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200/80 flex items-center gap-1.5 text-[10px] font-bold text-base-content shadow-md">
+        <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-base-300 border border-base-200/80 flex items-center gap-1.5 text-[10px] font-bold text-base-content shadow-md">
           <Layers className="w-3.5 h-3.5 text-primary" />
           <span>{album.media_count} items</span>
         </div>

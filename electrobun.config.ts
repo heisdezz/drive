@@ -12,7 +12,7 @@ export default {
       "dist/index.html": "views/mainview/index.html",
       "dist/assets": "views/mainview/assets",
     },
-    useAsar: true,
+    useAsar: false,
     bun: {
       entrypoint: "src/bun/index.ts",
       external: [],
@@ -26,12 +26,12 @@ export default {
       bundleCEF: false,
       chromiumFlags: {
         // "ozone-platform-hint": "auto",
-        "disable-gpu": true,
+        // "disable-gpu": true,
         // // "ignore-gpu-blocklist": true,
-        // // "enable-gpu-rasterization": true,
-        // // "enable-zero-copy": true,
-        // // "enable-features":
-        // //   "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
+        "enable-gpu-rasterization": true,
+        "enable-zero-copy": true,
+        "enable-features":
+          "VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization",
         // "disable-web-security": true,
         // "disable-site-isolation-trials": true,
       },

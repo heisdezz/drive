@@ -127,7 +127,9 @@ export const MediaCard = memo(function MediaCard({
       <div className="absolute inset-0 flex items-center justify-center bg-base-300">
         {!showThumbnails || hasError ? (
           <div className="flex flex-col items-center justify-center text-base-content/40 gap-2">
-            <div className={`p-4 rounded-full ${isVideo ? "bg-info/10 text-info" : "bg-secondary/10 text-secondary"}`}>
+            <div
+              className={`p-4 rounded-full ${isVideo ? "bg-info/10 text-info" : "bg-secondary/10 text-secondary"}`}
+            >
               {isVideo ? (
                 <FilmIcon className="w-8 h-8" />
               ) : (
@@ -151,7 +153,7 @@ export const MediaCard = memo(function MediaCard({
       </div>
 
       {/* Media type badge — top right */}
-      <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-md border border-base-200 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md">
+      <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300 border border-base-200 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md">
         {isVideo ? (
           <>
             <Play className="w-2.5 h-2.5 text-secondary fill-secondary" /> VIDEO
@@ -176,7 +178,7 @@ export const MediaCard = memo(function MediaCard({
 
       {/* Album badge — top left, fades on hover and when selecting */}
       {item.album_name && (
-        <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300/80 backdrop-blur-sm border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] group-hover:opacity-0 [.is-selecting_&]:opacity-0 transition-opacity duration-200 flex items-center gap-1">
+        <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300 border border-base-200 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] group-hover:opacity-0 [.is-selecting_&]:opacity-0 transition-opacity duration-200 flex items-center gap-1">
           <Folder className="w-2.5 h-2.5 text-primary fill-primary/10 shrink-0" />
           <span className="truncate">
             {item.album_name === "unknown" ? "Unsorted Media" : item.album_name}

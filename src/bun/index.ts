@@ -6,10 +6,6 @@ import { requestHandlers } from "./handlers";
 // if (process.platform === "linux") {
 //   process.env.WEBKIT_GST_DISABLE_HW_DECODERS = "1";
 // }
-
-if (process.platform === "linux") {
-  process.env.WEBKIT_DISABLE_DMABUF_RENDERER = "1";
-}
 const DEV_SERVER_URL = "http://localhost:5173";
 
 // Check if Vite dev server is running for HMR, retrying while it warms up.
@@ -25,7 +21,9 @@ async function getMainViewUrl(): Promise<string> {
         await new Promise((r) => setTimeout(r, 500));
       }
     }
-    console.log("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
+    console.log(
+      "Vite dev server not running. Run 'bun run dev:hmr' for HMR support.",
+    );
   }
   return "views://mainview/index.html";
 }
@@ -47,6 +45,7 @@ const url = await getMainViewUrl();
 new BrowserWindow({
   title: "React + Tailwind + Vite",
   url,
+  contextIsolation: true,
   rpc,
   frame: {
     width: 900,

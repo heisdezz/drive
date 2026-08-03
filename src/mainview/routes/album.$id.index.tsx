@@ -79,7 +79,8 @@ const SelectionControls = memo(function SelectionControls({
   // when the result flips between true/false, not on every individual toggle.
   const allSelected = useSelectionStore(
     (s) =>
-      mediaItems.length > 0 && mediaItems.every((item) => s.selected.has(item.id)),
+      mediaItems.length > 0 &&
+      mediaItems.every((item) => s.selected.has(item.id)),
   );
 
   return (
@@ -124,7 +125,7 @@ const SelectionFloatingBar = memo(function SelectionFloatingBar({
   if (!isSelecting || selectedCount === 0) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-md max-w-lg w-full justify-between">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-xs max-w-lg w-full justify-between">
       <div className="text-sm font-bold text-base-content">
         <span className="text-primary mr-1.5">{selectedCount}</span>
         {selectedCount === 1 ? "item" : "items"} selected
@@ -192,10 +193,12 @@ const DeleteDialogBody = memo(function DeleteDialogBody() {
       <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
         <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold block mb-0.5">Warning: Permanent Deletion</span>
+          <span className="font-bold block mb-0.5">
+            Warning: Permanent Deletion
+          </span>
           This will physically delete the selected files from your disk and
-          database cache. This action <span className="font-bold">cannot</span> be
-          undone.
+          database cache. This action <span className="font-bold">cannot</span>{" "}
+          be undone.
         </div>
       </div>
     </div>
@@ -425,7 +428,8 @@ function AlbumDetailComponent() {
           {selectedDrive.name} is Unmounted
         </h3>
         <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
-          This storage device needs to be mounted before you can view its albums.
+          This storage device needs to be mounted before you can view its
+          albums.
         </p>
         <button
           onClick={async () => {
@@ -492,7 +496,7 @@ function AlbumDetailComponent() {
       </div>
 
       {/* Album Header */}
-      <div className="p-6 rounded-2xl bg-linear-0 from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 bg-base-200/70 backdrop-blur-xs">
+      <div className="p-6 rounded-2xl bg-linear-0 from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 bg-base-200">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
             <FolderOpen className="w-6 h-6 text-primary-content" />
@@ -555,7 +559,9 @@ function AlbumDetailComponent() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-base-content/60 font-semibold">Sort:</span>
+            <span className="text-xs text-base-content/60 font-semibold">
+              Sort:
+            </span>
             <select
               value={sortBy}
               onChange={(e) =>
@@ -595,15 +601,21 @@ function AlbumDetailComponent() {
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-base-content/60 font-medium">Items per page:</span>
+          <span className="text-xs text-base-content/60 font-medium">
+            Items per page:
+          </span>
           <select
             value={limit}
             onChange={(e) => handleLimitChange(Number(e.target.value))}
             className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60 cursor-pointer"
           >
-            {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map((val) => (
-              <option key={val} value={val}>{val}</option>
-            ))}
+            {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map(
+              (val) => (
+                <option key={val} value={val}>
+                  {val}
+                </option>
+              ),
+            )}
           </select>
         </div>
       </div>
@@ -612,7 +624,9 @@ function AlbumDetailComponent() {
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[40vh] py-12">
           <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-xs text-base-content/40 font-bold">Loading Album Content...</p>
+          <p className="text-xs text-base-content/40 font-bold">
+            Loading Album Content...
+          </p>
         </div>
       ) : mediaItems.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
@@ -668,7 +682,9 @@ function AlbumDetailComponent() {
               disabled={deleteMediaMutation.isPending}
               className="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
             >
-              {deleteMediaMutation.isPending ? "Deleting..." : "Delete Permanently"}
+              {deleteMediaMutation.isPending
+                ? "Deleting..."
+                : "Delete Permanently"}
             </button>
           </>
         }

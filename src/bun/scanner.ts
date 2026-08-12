@@ -6,7 +6,6 @@ import { addLog } from "./logger";
 import { moveFile } from "./file-ops";
 import { backgroundThumbnailQueue } from "./thumbnails";
 
-// Active scan tracking state
 export interface ScanState {
 	scanning: boolean;
 	scannedCount: number;
@@ -16,12 +15,7 @@ export interface ScanState {
 
 export const activeScans = new Map<string, ScanState>();
 
-// Asynchronous directory scanner. Uses an explicit directory stack instead of
-// recursion so deeply-nested trees can't build a deep async call stack, and
-// prepares its SQL statements once up front so the per-file hot path reuses
-// them rather than re-compiling the same queries thousands of times.
 function isIgnored(fileName: string, relativePath: string, ignoreList: string[] = []): boolean {
-	// Standard built-in skips
 	if (
 		fileName === "albums" ||
 		fileName.startsWith(".") ||
@@ -40,24 +34,14 @@ function isIgnored(fileName: string, relativePath: string, ignoreList: string[] 
 	for (const rawPattern of ignoreList) {
 		const pattern = rawPattern.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase().trim();
 		if (!pattern) continue;
-
-		// Exact file/folder name match (e.g. "temp")
 		if (normFile === pattern) return true;
-
-		// Path segment match (e.g. "temp" matching any folder in "a/b/temp/c")
 		if (relSegments.includes(pattern)) return true;
-
-		// Relative path exact or prefix match (e.g. "subfolder/ignored_dir" matching "subfolder/ignored_dir/file.jpg")
 		if (normRel === pattern || normRel.startsWith(pattern + "/")) return true;
 	}
 
 	return false;
 }
 
-// Asynchronous directory scanner. Uses an explicit directory stack instead of
-// recursion so deeply-nested trees can't build a deep async call stack, and
-// prepares its SQL statements once up front so the per-file hot path reuses
-// them rather than re-compiling the same queries thousands of times.
 export async function walkDirectory(
 	drivePath: string,
 	startDir: string,
@@ -65,11 +49,26 @@ export async function walkDirectory(
 	scanState: ScanState,
 	ignoreList: string[] = []
 ) {
-	// Prepared once, reused for every media file processed in this scan.
 	const selectExisting = db.prepare("SELECT id, file_hash, current_relative_path FROM media_items WHERE original_relative_path = ?");
+
+	// Batch the album upsert + media insert into one transaction so they share
+	// a single journal flush instead of three separate synchronous DB calls.
 	const insertAlbum = db.prepare("INSERT OR IGNORE INTO albums (name, relative_path) VALUES (?, ?)");
 	const selectAlbum = db.prepare("SELECT id FROM albums WHERE name = ?");
 	const insertMedia = db.prepare("INSERT OR IGNORE INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, ?, ?, ?)");
+
+	const recordFile = db.transaction((
+		fileHash: string,
+		relativePath: string,
+		currentRelativePath: string,
+		fileSize: number,
+		mimeType: string,
+		albumName: string,
+	) => {
+		insertAlbum.run(albumName, `albums/${albumName}`);
+		const album = selectAlbum.get(albumName) as { id: number } | undefined;
+		insertMedia.run(fileHash, relativePath, currentRelativePath, fileSize, mimeType, album?.id ?? null);
+	});
 
 	const dirStack: string[] = [startDir];
 
@@ -83,32 +82,19 @@ export async function walkDirectory(
 			for (const file of files) {
 				if (!scanState.scanning) return;
 
-				// Skip symbolic links to avoid loops or escaping storage boundary
-				if (file.isSymbolicLink()) {
-					continue;
-				}
+				if (file.isSymbolicLink()) continue;
 
 				const fullPath = path.join(currentDir, file.name);
 				const relativePath = path.relative(drivePath, fullPath);
 
-				// Extra safety: do not descend or index outside the drive root
-				if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-					continue;
-				}
-
-				// Check custom and built-in ignore rules
-				if (isIgnored(file.name, relativePath, ignoreList)) {
-					continue;
-				}
+				if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) continue;
+				if (isIgnored(file.name, relativePath, ignoreList)) continue;
 
 				if (file.isDirectory()) {
 					dirStack.push(fullPath);
 				} else if (file.isFile()) {
 					scanState.scannedCount++;
 
-					// Safety-net yield for code paths that don't otherwise await (e.g.
-					// non-media files, or already-indexed files that only do a sync DB
-					// lookup) so a large already-scanned directory can't starve the loop.
 					if (scanState.scannedCount % 50 === 0) {
 						await new Promise((resolve) => setImmediate(resolve));
 						if (!scanState.scanning) return;
@@ -119,27 +105,19 @@ export async function walkDirectory(
 					const isVideo = [".mp4", ".mov", ".avi", ".mkv", ".webm"].includes(ext);
 
 					if (isImage || isVideo) {
-						// Check if already registered to avoid duplication
 						const existing = selectExisting.get(relativePath) as { id: number; file_hash: string; current_relative_path: string } | undefined;
 
 						if (!existing) {
-							// Async fs so each media file is a natural yield point — this
-							// keeps the single-threaded main process responsive to RPC
-							// requests (scaffoldLibrary/getScanStatus/getMediaItems)
-							// instead of blocking on a burst of synchronous syscalls.
 							const fileStats = await fs.promises.stat(fullPath);
 							const fileHash = `${file.name}_${fileStats.size}_${fileStats.mtimeMs}`;
 							const mimeType = isImage ? `image/${ext.slice(1)}` : `video/${ext.slice(1)}`;
 
-							// Create destination folder if not exists
 							const parentDir = path.dirname(fullPath);
-							const isRoot = parentDir === drivePath;
-							const albumName = isRoot ? "unknown" : path.basename(parentDir);
-
+							const albumName = parentDir === drivePath ? "unknown" : path.basename(parentDir);
 							const destDir = path.join(drivePath, "albums", albumName);
+
 							await fs.promises.mkdir(destDir, { recursive: true });
 
-							// Determine target full path
 							let targetFullPath = path.join(destDir, file.name);
 							if (fs.existsSync(targetFullPath)) {
 								const base = path.basename(file.name, ext);
@@ -150,37 +128,23 @@ export async function walkDirectory(
 								targetFullPath = path.join(destDir, `${base}_${counter}${ext}`);
 							}
 
-							// Bail out if the scan was stopped while we awaited above
 							if (!scanState.scanning) return;
 
 							try {
-								// Move the file physically
 								await moveFile(fullPath, targetFullPath);
 								const currentRelativePath = path.relative(drivePath, targetFullPath);
 
-								let albumId: number | null = null;
-								// Ensure the album exists in the database
-								insertAlbum.run(albumName, `albums/${albumName}`);
-
-								const album = selectAlbum.get(albumName) as { id: number } | undefined;
-								if (album) {
-									albumId = album.id;
-								}
-
-								// Insert into Database
-								insertMedia.run(fileHash, relativePath, currentRelativePath, fileStats.size, mimeType, albumId);
+								recordFile(fileHash, relativePath, currentRelativePath, fileStats.size, mimeType, albumName);
 
 								scanState.foundCount++;
 								addLog("info", `Moved media file during scan`, `original: ${relativePath} -> current: ${currentRelativePath}`);
 
-								// Queue background thumbnail generation
 								const thumbPath = path.join(drivePath, "albums", "thumbs", `${fileHash}.jpg`);
 								backgroundThumbnailQueue.add(targetFullPath, thumbPath);
 							} catch (moveErr: any) {
 								addLog("error", `Failed to move media file: ${fullPath}`, moveErr.message);
 							}
 						} else {
-							// Already registered, but queue missing thumbnail generation
 							const thumbPath = path.join(drivePath, "albums", "thumbs", `${existing.file_hash}.jpg`);
 							const targetFullPath = path.join(drivePath, existing.current_relative_path);
 							backgroundThumbnailQueue.add(targetFullPath, thumbPath);

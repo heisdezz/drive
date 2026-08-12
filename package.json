@@ -6,7 +6,7 @@
     "start": "vite build &&  electrobun dev",
     "dev": " electrobun dev --watch",
     "dev:hmr": "vite build && concurrently \"bun run hmr\" \"bun run dev:electrobun\"",
-    "dev:electrobun": " electrobun dev",
+    "dev:electrobun": "LIBVA_DRIVER_NAME=iHD DRI_PRIME=0 WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/renderD128 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 electrobun dev",
     "hmr": "vite --port 5173",
     "build:canary": "vite build && electrobun build --env=canary",
     "build:stable": "vite build && electrobun build --env=stable",

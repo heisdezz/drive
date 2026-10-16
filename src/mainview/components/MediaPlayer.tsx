@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useState, useRef } from "react";
-import { Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
+import { createSignal, createEffect, onCleanup, Show } from "solid-js";
+import { Link } from "@tanstack/solid-router";
+import { ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-solid";
 import { rpc } from "@/lib/rpc";
 import type { MediaItem } from "@/components/MediaCard";
 
@@ -16,47 +16,35 @@ interface MediaPlayerProps {
   loading: boolean;
 }
 
-export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
-  const {
-    item,
-    drivePath,
-    mediaUrl,
-    fileName,
-    isVideo,
-    prevId,
-    nextId,
-    albumId,
-    loading,
-  } = props;
-  const [launching, setLaunching] = useState(false);
-  const [launchError, setLaunchError] = useState<string | null>(null);
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
+export function MediaPlayer(props: MediaPlayerProps) {
+  const [launching, setLaunching] = createSignal(false);
+  const [launchError, setLaunchError] = createSignal<string | null>(null);
+  const [videoError, setVideoError] = createSignal<string | null>(null);
+  const [retryCount, setRetryCount] = createSignal(0);
+  let videoRef: HTMLVideoElement | undefined;
 
-  // Pause backend ffmpeg thumbnail generation while a video is actually
-  // playing so it doesn't steal CPU from the (software-decoded) playback.
-  const setThumbnailsPaused = useCallback((paused: boolean) => {
+  const setThumbnailsPaused = (paused: boolean) => {
     rpc.request.setThumbnailGenerationPaused({ paused }).catch(() => {});
-  }, []);
+  };
 
-  // Safety net: always resume when leaving the player so generation can never
-  // get stuck paused if the video is unmounted mid-playback (e.g. navigation).
-  useEffect(() => {
-    return () => setThumbnailsPaused(false);
-  }, [setThumbnailsPaused]);
+  onCleanup(() => {
+    setThumbnailsPaused(false);
+  });
 
-  useEffect(() => {
-    if (mediaUrl) setRetryCount(0);
-  }, [mediaUrl]);
+  createEffect(() => {
+    if (props.mediaUrl) {
+      setRetryCount(0);
+      setVideoError(null);
+    }
+  });
 
   const openInExternalPlayer = async () => {
     setLaunching(true);
     setLaunchError(null);
     try {
       const res = await rpc.request.openExternal({
-        drivePath,
-        relativePath: item.current_relative_path,
+        drivePath: props.drivePath,
+        relativePath: props.item.current_relative_path,
       });
       if (!res.success) {
         setLaunchError(res.error || "Failed to launch external player");
@@ -69,134 +57,128 @@ export const MediaPlayer = memo(function MediaPlayer(props: MediaPlayerProps) {
   };
 
   return (
-    <div className="lg:col-span-2 rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl flex flex-col items-center justify-center h-[50vh] md:h-[60vh] lg:h-[65vh] p-4 relative group isolate">
+    <div class="lg:col-span-2 rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl flex flex-col items-center justify-center h-[50vh] md:h-[60vh] lg:h-[65vh] p-4 relative group isolate">
       {/* Previous item button overlay */}
-      {prevId && (
+      <Show when={props.prevId}>
         <Link
           to="/item/$id"
-          params={{ id: String(prevId) }}
-          search={{ albumId }}
-          /* will-change promotes this overlay to its own compositing layer so
-             WebKit draws it above the video surface instead of blending into
-             the holepunch region (the source of the ghosting/trails). */
-          style={{ willChange: "transform" }}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/90 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+          params={{ id: String(props.prevId) }}
+          search={props.albumId ? { albumId: props.albumId } : undefined}
+          style={{ "will-change": "transform" }}
+          class="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/90 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
           title="Previous item (Left Arrow)"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft class="w-5 h-5" />
         </Link>
-      )}
+      </Show>
 
       {/* Next item button overlay */}
-      {nextId && (
+      <Show when={props.nextId}>
         <Link
           to="/item/$id"
-          params={{ id: String(nextId) }}
-          search={{ albumId }}
-          style={{ willChange: "transform" }}
-          className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/90 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
+          params={{ id: String(props.nextId) }}
+          search={props.albumId ? { albumId: props.albumId } : undefined}
+          style={{ "will-change": "transform" }}
+          class="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/90 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
           title="Next item (Right Arrow)"
         >
-          <ChevronRight className="w-5 h-5" />
+          <ChevronRight class="w-5 h-5" />
         </Link>
-      )}
+      </Show>
 
-      {isVideo ? (
-        <>
-          <video
-            ref={videoRef}
-            key={item.id}
-            controls
-            autoPlay
-            src={mediaUrl}
-            onPlay={() => setThumbnailsPaused(true)}
-            onPause={() => setThumbnailsPaused(false)}
-            onEnded={() => setThumbnailsPaused(false)}
-            onError={(e) => {
-              const video = e.target as HTMLVideoElement;
-              const error = video.error;
-              const errorMsg = `Video error: Code ${error?.code} (${error?.message || "Unknown error"})`;
-
-              // Retry on MEDIA_ERR_DECODE (code 3) — transient decode failures
-              const MAX_RETRIES = 3;
-              if (error?.code === 3 && retryCount < MAX_RETRIES) {
-                const nextRetry = retryCount + 1;
-                setRetryCount(nextRetry);
-                setVideoError(
-                  `Retrying playback (${nextRetry}/${MAX_RETRIES})...`,
-                );
-                const currentTime = video.currentTime;
-                video.pause();
-                video.src = "";
-                video.load();
-                setTimeout(() => {
-                  if (videoRef.current) {
-                    videoRef.current.src = `${mediaUrl}&retry=${nextRetry}&t=${Date.now()}`;
-                    videoRef.current.currentTime = currentTime;
-                    videoRef.current.play().catch(() => {});
-                  }
-                }, 100 * nextRetry);
-              } else if (error?.code === 3) {
-                setVideoError(`${errorMsg} - Max retries exceeded`);
-              } else {
-                setVideoError(errorMsg);
-              }
-              setThumbnailsPaused(false);
-            }}
-            /* Promote the video to its own GPU compositing layer so overlaid
-               controls composite cleanly above it (prevents WebKit ghosting). */
-            style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
-            className="w-full h-full max-h-[70vh] object-contain rounded-lg bg-black"
+      <Show
+        when={props.isVideo}
+        fallback={
+          <img
+            src={props.mediaUrl}
+            alt={props.fileName}
+            class="w-full h-full max-h-[70vh] object-contain rounded-lg shadow-lg"
           />
-          <button
-            onClick={openInExternalPlayer}
-            disabled={launching}
-            /* No backdrop-blur here: backdrop-filter sampled over a playing
-               video is what produced the random ghosting/trails in WebKit.
-               translateZ(0) keeps this control on its own compositing layer. */
-            style={{ transform: "translateZ(0)" }}
-            className="absolute top-3 right-3 z-10 btn btn-xs btn-ghost bg-base-300/90 border border-base-300 text-base-content/80 hover:text-base-content font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Open in external player (Haruna, VLC, or system player)"
-          >
-            {launching ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <ExternalLink className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">Open in Haruna / VLC</span>
-          </button>
-          {launchError && (
-            <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20">
-              {launchError}
-            </p>
-          )}
-          {videoError && (
-            <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20 max-w-xs">
-              {videoError}
-            </p>
-          )}
-        </>
-      ) : (
-        <img
-          key={item.id}
-          src={mediaUrl}
-          alt={fileName}
-          className="w-full h-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+        }
+      >
+        <video
+          ref={videoRef}
+          controls
+          autoplay
+          src={props.mediaUrl}
+          onPlay={() => setThumbnailsPaused(true)}
+          onPause={() => setThumbnailsPaused(false)}
+          onEnded={() => setThumbnailsPaused(false)}
+          onError={(e) => {
+            const video = e.currentTarget;
+            const error = video.error;
+            const errorMsg = `Video error: Code ${error?.code} (${error?.message || "Unknown error"})`;
+
+            const MAX_RETRIES = 3;
+            if (error?.code === 3 && retryCount() < MAX_RETRIES) {
+              const nextRetry = retryCount() + 1;
+              setRetryCount(nextRetry);
+              setVideoError(
+                `Retrying playback (${nextRetry}/${MAX_RETRIES})...`,
+              );
+              const currentTime = video.currentTime;
+              video.pause();
+              video.src = "";
+              video.load();
+              setTimeout(() => {
+                if (videoRef) {
+                  videoRef.src = `${props.mediaUrl}&retry=${nextRetry}&t=${Date.now()}`;
+                  videoRef.currentTime = currentTime;
+                  videoRef.play().catch(() => {});
+                }
+              }, 100 * nextRetry);
+            } else if (error?.code === 3) {
+              setVideoError(`${errorMsg} - Max retries exceeded`);
+            } else {
+              setVideoError(errorMsg);
+            }
+            setThumbnailsPaused(false);
+          }}
+          style={{
+            transform: "translateZ(0)",
+            "backface-visibility": "hidden",
+          }}
+          class="w-full h-full max-h-[70vh] object-contain rounded-lg bg-black"
         />
-      )}
+        <button
+          onClick={openInExternalPlayer}
+          disabled={launching()}
+          style={{ transform: "translateZ(0)" }}
+          class="absolute top-3 right-3 z-10 btn btn-xs btn-ghost bg-base-300/90 border border-base-300 text-base-content/80 hover:text-base-content font-bold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Open in external player (Haruna, VLC, or system player)"
+        >
+          <Show
+            when={launching()}
+            fallback={<ExternalLink class="w-3.5 h-3.5" />}
+          >
+            <Loader2 class="w-3.5 h-3.5 animate-spin" />
+          </Show>
+          <span class="hidden sm:inline">Open in Haruna / VLC</span>
+        </button>
+        <Show when={launchError()}>
+          <p class="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20">
+            {launchError()}
+          </p>
+        </Show>
+        <Show when={videoError()}>
+          <p class="absolute bottom-3 left-1/2 -translate-x-1/2 text-error text-[11px] bg-base-300/80 px-2 py-1 rounded-md border border-error/20 max-w-xs">
+            {videoError()}
+          </p>
+        </Show>
+      </Show>
 
       {/* Transition Loading Overlay inside player */}
-      {loading && (
+      <Show when={props.loading}>
         <div
           style={{ transform: "translateZ(0)" }}
-          className="absolute inset-0 bg-base-300/85 flex flex-col items-center justify-center z-20 transition-all duration-300"
+          class="absolute inset-0 bg-base-300/85 flex flex-col items-center justify-center z-20 transition-all duration-300"
         >
-          <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
-          <p className="text-base-content/60 text-xs font-bold">
+          <Loader2 class="w-8 h-8 text-primary animate-spin mb-2" />
+          <p class="text-base-content/60 text-xs font-bold">
             Loading media details...
           </p>
         </div>
-      )}
+      </Show>
     </div>
   );
-});
+}

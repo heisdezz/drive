@@ -1,46 +1,84 @@
-import { create } from "zustand";
+import { createSignal } from "solid-js";
 
-interface SelectionState {
-  isSelecting: boolean;
-  selected: Set<number>;
-  start: () => void;
-  cancel: () => void;
-  toggle: (id: number) => void;
-  clear: () => void;
-  selectMany: (ids: number[]) => void;
-  deselectMany: (ids: number[]) => void;
+const [isSelecting, setIsSelecting] = createSignal(false);
+const [selected, setSelected] = createSignal<Set<number>>(new Set<number>());
+
+function start() {
+  setIsSelecting(true);
+  setSelected(new Set<number>());
 }
 
-export const useSelectionStore = create<SelectionState>((set) => ({
-  isSelecting: false,
-  selected: new Set<number>(),
-  start: () => set({ isSelecting: true, selected: new Set() }),
-  cancel: () => set({ isSelecting: false, selected: new Set() }),
-  toggle: (id) =>
-    set((s) => {
-      const next = new Set(s.selected);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return { selected: next };
-    }),
-  clear: () =>
-    set((s) => (s.selected.size === 0 ? s : { selected: new Set() })),
-  selectMany: (ids) =>
-    set((s) => {
-      // Skip copy + re-render if every id is already selected.
-      const toAdd = ids.filter((id) => !s.selected.has(id));
-      if (toAdd.length === 0) return s;
-      const next = new Set(s.selected);
-      for (const id of toAdd) next.add(id);
-      return { selected: next };
-    }),
-  deselectMany: (ids) =>
-    set((s) => {
-      // Skip copy + re-render if none of the ids are currently selected.
-      const toRemove = ids.filter((id) => s.selected.has(id));
-      if (toRemove.length === 0) return s;
-      const next = new Set(s.selected);
-      for (const id of toRemove) next.delete(id);
-      return { selected: next };
-    }),
-}));
+function cancel() {
+  setIsSelecting(false);
+  setSelected(new Set<number>());
+}
+
+function toggle(id: number) {
+  const current = selected();
+  const next = new Set(current);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  setSelected(next);
+}
+
+function clear() {
+  if (selected().size > 0) {
+    setSelected(new Set<number>());
+  }
+}
+
+function selectMany(ids: number[]) {
+  const current = selected();
+  const toAdd = ids.filter((id) => !current.has(id));
+  if (toAdd.length === 0) return;
+  const next = new Set(current);
+  for (const id of toAdd) next.add(id);
+  setSelected(next);
+}
+
+function deselectMany(ids: number[]) {
+  const current = selected();
+  const toRemove = ids.filter((id) => current.has(id));
+  if (toRemove.length === 0) return;
+  const next = new Set(current);
+  for (const id of toRemove) next.delete(id);
+  setSelected(next);
+}
+
+const state = {
+  get isSelecting() {
+    return isSelecting();
+  },
+  get selected() {
+    return selected();
+  },
+  start,
+  cancel,
+  toggle,
+  clear,
+  selectMany,
+  deselectMany,
+};
+
+export function useSelectionStore<T = any>(
+  selector?: (s: typeof state) => T,
+): any {
+  if (selector) return selector(state);
+  return state;
+}
+
+useSelectionStore.getState = () => state;
+useSelectionStore.subscribe = (_listener: any) => {
+  return () => {};
+};
+
+export {
+  isSelecting,
+  selected,
+  start as startSelection,
+  cancel as cancelSelection,
+  toggle as toggleSelection,
+  clear as clearSelection,
+  selectMany,
+  deselectMany,
+};

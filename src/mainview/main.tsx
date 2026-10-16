@@ -1,37 +1,18 @@
-// import { scan } from "react-scan/all-environments";
-
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import { render } from "solid-js/web";
 import {
   RouterProvider,
   createRouter,
   createHashHistory,
-} from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+} from "@tanstack/solid-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
 import "./index.css";
-//@ts-ignore
-import FPSStats from "react-fps-stats";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
 
-// Enable when loaded from the Vite HMR dev server (not the built views:// bundle)
-// Attempt to dynamically import react-scan if available; ignore failures.
-void (async () => {
-  try {
-    const mod = await import("react-scan/all-environments");
-    if (mod?.scan) mod.scan({ enabled: false });
-  } catch {
-    // react-scan not available in built views bundle — ignore silently
-  }
-})();
-
-// Silence two known-benign console errors that are just noise here:
-// 1. "ResizeObserver loop completed with undelivered notifications" — fired by
-//    layout/animation churn (virtualized grids, hover transitions). It's a
-//    warning that the browser deferred a resize callback, not a real failure.
-// 2. AbortError — the <video> load/play is aborted when you navigate between
-//    items faster than a clip can start; the aborted request is expected.
+// Silence two known-benign console errors:
+// 1. "ResizeObserver loop completed with undelivered notifications"
+// 2. AbortError on rapid video navigation
 window.addEventListener("error", (e) => {
   if (e.message?.includes("ResizeObserver loop")) {
     e.stopImmediatePropagation();
@@ -47,11 +28,7 @@ window.addEventListener("unhandledrejection", (e) => {
 // Create QueryClient
 const queryClient = new QueryClient();
 
-// Use hash history so routing is independent of the page's base URL. In the
-// built app the window loads `views://mainview/index.html`, so a browser-history
-// router would read the pathname as `/mainview/index.html`, match no route, and
-// render notFound. Keeping the route in the `#` fragment resolves to `/` on load
-// in both dev (http://localhost:5173) and production.
+// Use hash history so routing is independent of the page's base URL in Electrobun.
 const router = createRouter({
   routeTree,
   history: createHashHistory(),
@@ -61,25 +38,18 @@ const router = createRouter({
 });
 
 // Register the router instance for type safety
-declare module "@tanstack/react-router" {
+declare module "@tanstack/solid-router" {
   interface Register {
     router: typeof router;
   }
 }
 
 const rootElement = document.getElementById("root")!;
-if (!rootElement.innerHTML) {
-  const root = createRoot(rootElement);
-  root.render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider
-          router={router}
-          scrollRestoration
-          scrollRestorationBehavior="smooth"
-        />
-        <FPSStats />
-      </QueryClientProvider>
-    </StrictMode>,
-  );
-}
+render(
+  () => (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  ),
+  rootElement,
+);

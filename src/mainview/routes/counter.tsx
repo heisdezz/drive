@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute } from "@tanstack/solid-router";
+import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
 
 export const Route = createFileRoute("/counter")({
   component: VideoTest,
@@ -11,16 +11,59 @@ const MEDIA_SERVER = "http://localhost:51789";
 
 type Source = "server" | "file";
 
+function Stat(props: { label: string; value: string; class?: string }) {
+  return (
+    <div
+      class={`rounded-xl bg-base-300 border border-base-200 p-3 ${props.class || ""}`}
+    >
+      <div class="text-[9px] uppercase font-bold text-base-content/40 tracking-wider">
+        {props.label}
+      </div>
+      <div class="text-xs font-mono text-base-content mt-0.5 break-all">
+        {props.value}
+      </div>
+    </div>
+  );
+}
+
+function mediaErrorText(code?: number) {
+  switch (code) {
+    case 1:
+      return "MEDIA_ERR_ABORTED (fetch aborted)";
+    case 2:
+      return "MEDIA_ERR_NETWORK (network error)";
+    case 3:
+      return "MEDIA_ERR_DECODE (decode failed — codec/hardware issue)";
+    case 4:
+      return "MEDIA_ERR_SRC_NOT_SUPPORTED (container/codec unsupported)";
+    default:
+      return "unknown";
+  }
+}
+
+function readyStateText(s: number) {
+  return (
+    [
+      "HAVE_NOTHING",
+      "HAVE_METADATA",
+      "HAVE_CURRENT",
+      "HAVE_FUTURE",
+      "HAVE_ENOUGH",
+    ][s] ?? ""
+  );
+}
+
+function networkStateText(s: number) {
+  return ["EMPTY", "IDLE", "LOADING", "NO_SOURCE"][s] ?? "";
+}
+
 function VideoTest() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [source, setSource] = useState<Source>("server");
-  // Draft holds what's currently typed; `filePath` is the committed path the
-  // video actually loads (only updated on submit) so we don't reload on every
-  // keystroke.
-  const [draftPath, setDraftPath] = useState(TEST_FILE);
-  const [filePath, setFilePath] = useState(TEST_FILE);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [info, setInfo] = useState({
+  let videoRef: HTMLVideoElement | undefined;
+  const [source, setSource] = createSignal<Source>("server");
+  const [draftPath, setDraftPath] = createSignal(TEST_FILE);
+  const [filePath, setFilePath] = createSignal(TEST_FILE);
+  const [logs, setLogs] = createSignal<string[]>([]);
+  const [info, setInfo] = createSignal({
     readyState: 0,
     networkState: 0,
     width: 0,
@@ -29,9 +72,10 @@ function VideoTest() {
     buffered: "",
   });
 
-  const serverUrl = `${MEDIA_SERVER}/media?path=${encodeURIComponent(filePath)}`;
-  const fileUrl = `file://${filePath}`;
-  const src = source === "server" ? serverUrl : fileUrl;
+  const serverUrl = () =>
+    `${MEDIA_SERVER}/media?path=${encodeURIComponent(filePath())}`;
+  const fileUrl = () => `file://${filePath()}`;
+  const src = () => (source() === "server" ? serverUrl() : fileUrl());
 
   const log = (msg: string) =>
     setLogs((prev) => [
@@ -39,8 +83,10 @@ function VideoTest() {
       ...prev.slice(0, 199),
     ]);
 
-  useEffect(() => {
-    const v = videoRef.current;
+  createEffect(() => {
+    const v = videoRef;
+    const currentSrc = src();
+    const currentSource = source();
     if (!v) return;
 
     const events = [
@@ -98,21 +144,21 @@ function VideoTest() {
     const onTime = () => snapshot();
     v.addEventListener("timeupdate", onTime);
 
-    log(`── source switched to "${source}" → ${src}`);
+    log(`── source switched to "${currentSource}" → ${currentSrc}`);
 
-    return () => {
+    onCleanup(() => {
       for (const ev of events) v.removeEventListener(ev, handlers[ev]);
       v.removeEventListener("timeupdate", onTime);
-    };
-  }, [source, src]);
+    });
+  });
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="space-y-1">
-        <h2 className="text-2xl font-extrabold text-base-content">
+    <div class="max-w-4xl mx-auto space-y-6">
+      <div class="space-y-1">
+        <h2 class="text-2xl font-extrabold text-base-content">
           Video Playback Diagnostic
         </h2>
-        <p className="text-base-content/60 text-sm">
+        <p class="text-base-content/60 text-sm">
           Plays the test file through the local media server (range-request
           path) so you can isolate implementation vs. WebKit/GStreamer decode
           issues.
@@ -123,179 +169,127 @@ function VideoTest() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setFilePath(draftPath.trim());
+          setFilePath(draftPath().trim());
         }}
-        className="flex items-center gap-2"
+        class="flex items-center gap-2"
       >
         <input
           type="text"
-          value={draftPath}
-          onChange={(e) => setDraftPath(e.target.value)}
+          value={draftPath()}
+          onInput={(e) => setDraftPath(e.currentTarget.value)}
           placeholder="/absolute/path/to/video.mp4"
-          spellCheck={false}
-          className="input input-sm input-bordered flex-1 font-mono text-xs"
+          spellcheck={false}
+          class="input input-sm input-bordered flex-1 font-mono text-xs"
         />
         <button
           type="submit"
-          disabled={!draftPath.trim() || draftPath.trim() === filePath}
-          className="btn btn-sm btn-primary"
+          disabled={!draftPath().trim() || draftPath().trim() === filePath()}
+          class="btn btn-sm btn-primary"
         >
           Load
         </button>
       </form>
 
       {/* Source toggle */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-bold text-base-content/60">Source:</span>
-        <div className="join">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold text-base-content/60">Source:</span>
+        <div class="join">
           <button
             onClick={() => setSource("server")}
-            className={`btn btn-sm join-item ${source === "server" ? "btn-primary" : "btn-outline"}`}
+            class={`btn btn-sm join-item ${source() === "server" ? "btn-primary" : "btn-outline"}`}
           >
             Media Server (/media)
           </button>
           <button
             onClick={() => setSource("file")}
-            className={`btn btn-sm join-item ${source === "file" ? "btn-primary" : "btn-outline"}`}
+            class={`btn btn-sm join-item ${source() === "file" ? "btn-primary" : "btn-outline"}`}
           >
             Direct file://
           </button>
         </div>
         <button
-          onClick={() => videoRef.current?.load()}
-          className="btn btn-sm btn-outline ml-2"
+          onClick={() => videoRef?.load()}
+          class="btn btn-sm btn-outline ml-2"
         >
           Reload
         </button>
       </div>
 
       {/* The video */}
-      <div className="rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl">
+      <div class="rounded-2xl border border-base-200 bg-base-300 overflow-hidden shadow-2xl">
         <video
           ref={videoRef}
-          key={src}
-          src={src}
+          src={src()}
           controls
-          autoPlay
-          playsInline
-          style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
-          className="w-full max-h-[55vh] object-contain bg-black"
+          autoplay
+          playsinline
+          style={{
+            transform: "translateZ(0)",
+            "backface-visibility": "hidden",
+          }}
+          class="w-full max-h-[55vh] object-contain bg-black"
         />
       </div>
 
       {/* Live state */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat
           label="readyState"
-          value={`${info.readyState} ${readyStateText(info.readyState)}`}
+          value={`${info().readyState} ${readyStateText(info().readyState)}`}
         />
         <Stat
           label="networkState"
-          value={`${info.networkState} ${networkStateText(info.networkState)}`}
+          value={`${info().networkState} ${networkStateText(info().networkState)}`}
         />
         <Stat
           label="resolution"
-          value={info.width ? `${info.width}×${info.height}` : "—"}
+          value={info().width ? `${info().width}×${info().height}` : "—"}
         />
         <Stat
           label="duration"
-          value={info.duration ? `${info.duration.toFixed(1)}s` : "—"}
+          value={info().duration ? `${info().duration.toFixed(1)}s` : "—"}
         />
         <Stat
           label="buffered"
-          value={info.buffered || "—"}
-          className="col-span-2"
+          value={info().buffered || "—"}
+          class="col-span-2"
         />
       </div>
 
-      <div className="text-[11px] font-mono text-base-content/50 break-all bg-base-300/50 border border-base-200 rounded-lg p-3">
-        {src}
+      <div class="text-[11px] font-mono text-base-content/50 break-all bg-base-300/50 border border-base-200 rounded-lg p-3">
+        {src()}
       </div>
 
       {/* Event log */}
-      <div className="rounded-2xl bg-base-300 border border-base-200 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-base-200">
-          <span className="text-xs font-bold text-base-content/70">
-            Event Log
-          </span>
+      <div class="rounded-2xl bg-base-300 border border-base-200 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-base-200">
+          <span class="text-xs font-bold text-base-content/70">Event Log</span>
           <button
             onClick={() => setLogs([])}
-            className="btn btn-xs btn-ghost text-base-content/60"
+            class="btn btn-xs btn-ghost text-base-content/60"
           >
             Clear
           </button>
         </div>
-        <div className="max-h-72 overflow-y-auto font-mono text-[11px] divide-y divide-base-200/40">
-          {logs.length === 0 ? (
-            <div className="p-4 text-base-content/40 italic">
-              No events yet…
-            </div>
-          ) : (
-            logs.map((l, i) => (
-              <div
-                key={i}
-                className={`px-4 py-1.5 ${l.includes("⚠️") ? "text-error bg-error/5" : "text-base-content/70"}`}
-              >
-                {l}
-              </div>
-            ))
-          )}
+        <div class="max-h-72 overflow-y-auto font-mono text-[11px] divide-y divide-base-200/40">
+          <Show
+            when={logs().length > 0}
+            fallback={
+              <div class="p-4 text-base-content/40 italic">No events yet…</div>
+            }
+          >
+            <For each={logs()}>
+              {(l) => (
+                <div
+                  class={`px-4 py-1.5 ${l.includes("⚠️") ? "text-error bg-error/5" : "text-base-content/70"}`}
+                >
+                  {l}
+                </div>
+              )}
+            </For>
+          </Show>
         </div>
       </div>
     </div>
   );
-}
-
-function Stat({
-  label,
-  value,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`rounded-xl bg-base-300 border border-base-200 p-3 ${className}`}
-    >
-      <div className="text-[9px] uppercase font-bold text-base-content/40 tracking-wider">
-        {label}
-      </div>
-      <div className="text-xs font-mono text-base-content mt-0.5 break-all">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function mediaErrorText(code?: number) {
-  switch (code) {
-    case 1:
-      return "MEDIA_ERR_ABORTED (fetch aborted)";
-    case 2:
-      return "MEDIA_ERR_NETWORK (network error)";
-    case 3:
-      return "MEDIA_ERR_DECODE (decode failed — codec/hardware issue)";
-    case 4:
-      return "MEDIA_ERR_SRC_NOT_SUPPORTED (container/codec unsupported)";
-    default:
-      return "unknown";
-  }
-}
-
-function readyStateText(s: number) {
-  return (
-    [
-      "HAVE_NOTHING",
-      "HAVE_METADATA",
-      "HAVE_CURRENT",
-      "HAVE_FUTURE",
-      "HAVE_ENOUGH",
-    ][s] ?? ""
-  );
-}
-
-function networkStateText(s: number) {
-  return ["EMPTY", "IDLE", "LOADING", "NO_SOURCE"][s] ?? "";
 }

@@ -1,5 +1,10 @@
-import { memo, useCallback, useMemo, useRef } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createMemo, Show, For } from "solid-js";
+import {
+  createFileRoute,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/solid-router";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
 import { MediaCard, type MediaItem } from "@/components/MediaCard";
@@ -16,16 +21,19 @@ import {
   FolderPlus,
   RotateCw,
   Trash,
-} from "lucide-react";
-import { LegendList } from "@legendapp/list/react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+} from "lucide-solid";
+import {
+  createQuery,
+  useQueryClient,
+  createMutation,
+} from "@tanstack/solid-query";
 import SearchBar from "@/components/Searchbar";
 import {
   MoveToAlbumModal,
   type MoveModalHandle,
 } from "@/components/MoveToAlbumModal";
 import { useSelectionStore } from "@/store/selection_store";
-import DialogModal, { ModalHandle } from "@/components/DialogModal";
+import DialogModal, { type ModalHandle } from "@/components/DialogModal";
 
 interface AlbumSearch {
   page?: number;
@@ -50,647 +58,577 @@ export const Route = createFileRoute("/album/$id/")({
   },
 });
 
-function chunk<T>(arr: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let i = 0; i < arr.length; i += size)
-    result.push(arr.slice(i, i + size));
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Isolated selection components — each reads only what it needs from the store
-// so that selection changes never trigger a re-render in AlbumDetailComponent
-// or LegendList.
-// ---------------------------------------------------------------------------
-
-const SelectionControls = memo(function SelectionControls({
-  mediaItems,
-  onStart,
-  onCancel,
-}: {
-  mediaItems: MediaItem[];
-  onStart: () => void;
-  onCancel: () => void;
-}) {
-  const isSelecting = useSelectionStore((s) => s.isSelecting);
-  const selectMany = useSelectionStore((s) => s.selectMany);
-  const deselectMany = useSelectionStore((s) => s.deselectMany);
-  // Compute all-selected without subscribing to the whole Set — only changes
-  // when the result flips between true/false, not on every individual toggle.
-  const allSelected = useSelectionStore(
-    (s) =>
-      mediaItems.length > 0 &&
-      mediaItems.every((item) => s.selected.has(item.id)),
-  );
-
-  return (
-    <>
-      {isSelecting && mediaItems.length > 0 && (
-        <button
-          onClick={() => {
-            if (allSelected) deselectMany(mediaItems.map((item) => item.id));
-            else selectMany(mediaItems.map((item) => item.id));
-          }}
-          className="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
-        >
-          {allSelected ? "Deselect All" : "Select All"}
-        </button>
-      )}
-      <button
-        onClick={() => (isSelecting ? onCancel() : onStart())}
-        className={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
-          isSelecting
-            ? "btn-secondary text-secondary-content"
-            : "btn-outline border-base-300 text-base-content/80"
-        }`}
-      >
-        {isSelecting ? "Cancel" : "Select Items"}
-      </button>
-    </>
-  );
-});
-
-const SelectionFloatingBar = memo(function SelectionFloatingBar({
-  onMove,
-  onDelete,
-  onClear,
-}: {
-  onMove: (ids: number[]) => void;
-  onDelete: () => void;
-  onClear: () => void;
-}) {
-  const isSelecting = useSelectionStore((s) => s.isSelecting);
-  const selectedCount = useSelectionStore((s) => s.selected.size);
-
-  if (!isSelecting || selectedCount === 0) return null;
-
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-xs max-w-lg w-full justify-between">
-      <div className="text-sm font-bold text-base-content">
-        <span className="text-primary mr-1.5">{selectedCount}</span>
-        {selectedCount === 1 ? "item" : "items"} selected
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={onClear}
-          className="btn btn-xs btn-ghost text-base-content/60 hover:text-base-content font-medium"
-        >
-          Clear
-        </button>
-        <button
-          onClick={onDelete}
-          className="btn btn-xs btn-outline btn-error font-bold flex items-center gap-1 cursor-pointer"
-        >
-          <Trash className="w-3.5 h-3.5" /> Delete
-        </button>
-        <button
-          onClick={() => {
-            const ids = Array.from(useSelectionStore.getState().selected);
-            onMove(ids);
-          }}
-          className="btn btn-xs btn-primary font-bold shadow-lg shadow-primary/25 flex items-center gap-1 cursor-pointer"
-        >
-          <FolderPlus className="w-3.5 h-3.5" /> Move to Album
-        </button>
-      </div>
-    </div>
-  );
-});
-
-// Wraps LegendList and applies the is-selecting CSS class so MediaCard's
-// CSS selectors ([.is-selecting_&]:...) still work without renderMediaRow
-// depending on isSelecting.
-const SelectableMediaGrid = memo(function SelectableMediaGrid({
-  data,
-  renderItem,
-}: {
-  data: MediaItem[][];
-  renderItem: ({ item }: { item: MediaItem[] }) => React.ReactNode;
-}) {
-  const isSelecting = useSelectionStore((s) => s.isSelecting);
-  return (
-    <div className={isSelecting ? "is-selecting" : ""}>
-      <LegendList<MediaItem[]>
-        data={data}
-        estimatedItemSize={290}
-        keyExtractor={(_: MediaItem[], index: number) => `row-${index}`}
-        renderItem={renderItem}
-      />
-    </div>
-  );
-});
-
-// Reads selectedCount for the delete dialog body without the parent needing to.
-const DeleteDialogBody = memo(function DeleteDialogBody() {
-  const selectedCount = useSelectionStore((s) => s.selected.size);
-  return (
-    <div className="space-y-3 text-left">
-      <p className="text-xs text-base-content/70 leading-relaxed">
-        Are you sure you want to permanently delete the{" "}
-        <span className="font-bold text-base-content">{selectedCount}</span>{" "}
-        selected media file{selectedCount === 1 ? "" : "s"}?
-      </p>
-      <div className="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
-        <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold block mb-0.5">
-            Warning: Permanent Deletion
-          </span>
-          This will physically delete the selected files from your disk and
-          database cache. This action <span className="font-bold">cannot</span>{" "}
-          be undone.
-        </div>
-      </div>
-    </div>
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Main page component — reads nothing reactive from the selection store.
-// ---------------------------------------------------------------------------
-
 function AlbumDetailComponent() {
-  const { selectedDrive, fetchDrives } = useDriveStore();
-  const { id } = Route.useParams();
-  const {
-    page = 0,
-    limit = 100,
-    search = "",
-    filter = "all",
-    sortBy = "date",
-    sortOrder = "desc",
-  } = Route.useSearch();
-  const navigate = useNavigate({ from: Route.fullPath });
+  const drive = useDriveStore();
+  const params = useParams({ from: Route.id });
+  const search = useSearch({ from: Route.id });
+  const navigate = useNavigate({ from: Route.id });
   const queryClient = useQueryClient();
-  const albumId = Number(id);
+  const selection = useSelectionStore();
 
-  const {
-    data: album,
-    isLoading: isAlbumLoading,
-    error: albumError,
-  } = useQuery({
-    queryKey: ["album", selectedDrive?.path, albumId],
+  const albumId = () => Number(params().id);
+
+  const albumQuery = createQuery(() => ({
+    queryKey: ["album", drive.selectedDrive?.path, albumId()],
     queryFn: async () => {
-      if (!selectedDrive?.path || isNaN(albumId)) return null;
+      const path = drive.selectedDrive?.path;
+      const id = albumId();
+      if (!path || isNaN(id)) return null;
       const res = await rpc.request.getAlbum({
-        drivePath: selectedDrive.path,
-        albumId,
+        drivePath: path,
+        albumId: id,
       });
       if (res.error) throw new Error(res.error);
       return res.album || null;
     },
-    enabled: !!selectedDrive?.path && !isNaN(albumId),
-  });
+    enabled: !!drive.selectedDrive?.path && !isNaN(albumId()),
+  }));
 
-  const {
-    data: mediaData = { items: [], total: 0 },
-    isLoading: isMediaLoading,
-    error: mediaError,
-  } = useQuery({
-    queryKey: [
-      "album-media",
-      selectedDrive?.path,
-      albumId,
-      page,
-      limit,
-      search,
-      filter,
-      sortBy,
-      sortOrder,
-    ],
-    queryFn: async () => {
-      if (!selectedDrive?.path || isNaN(albumId))
-        return { items: [], total: 0 };
-      const res = await rpc.request.getAlbumMedia({
-        drivePath: selectedDrive.path,
-        albumId,
+  const mediaQuery = createQuery(() => {
+    const s = search();
+    const id = albumId();
+    const path = drive.selectedDrive?.path;
+    const page = s.page || 0;
+    const limit = s.limit || 100;
+    const searchQueryStr = s.search || "";
+    const filter = s.filter || "all";
+    const sortBy = s.sortBy || "date";
+    const sortOrder = s.sortOrder || "desc";
+
+    return {
+      queryKey: [
+        "album-media",
+        path,
+        id,
+        page,
         limit,
-        offset: page * limit,
-        search,
-        filter: filter === "all" ? undefined : filter,
+        searchQueryStr,
+        filter,
         sortBy,
         sortOrder,
-      });
-      if (res.error) throw new Error(res.error);
-      return { items: (res.items as MediaItem[]) || [], total: res.total || 0 };
-    },
-    enabled: !!selectedDrive?.path && !isNaN(albumId),
+      ],
+      queryFn: async () => {
+        if (!path || isNaN(id)) return { items: [] as MediaItem[], total: 0 };
+        const res = await rpc.request.getAlbumMedia({
+          drivePath: path,
+          albumId: id,
+          limit,
+          offset: page * limit,
+          search: searchQueryStr,
+          filter: filter === "all" ? undefined : filter,
+          sortBy,
+          sortOrder,
+        });
+        if (res.error) throw new Error(res.error);
+        return {
+          items: (res.items as MediaItem[]) || [],
+          total: res.total || 0,
+        };
+      },
+      enabled: !!path && !isNaN(id),
+    };
   });
 
-  // Only read stable action functions from the store — these never change
-  // reference so they don't trigger re-renders.
-  const startSelection = useSelectionStore((s) => s.start);
-  const cancelSelection = useSelectionStore((s) => s.cancel);
-  const clearSelection = useSelectionStore((s) => s.clear);
+  let moveModalRef: MoveModalHandle | undefined;
+  let deleteModalRef: ModalHandle | undefined;
 
-  const moveModalRef = useRef<MoveModalHandle>(null);
-  const deleteModalRef = useRef<ModalHandle>(null);
-
-  const deleteMediaMutation = useMutation({
+  const deleteMediaMutation = createMutation(() => ({
     mutationFn: async (mediaIds: number[]) => {
-      if (!selectedDrive?.path) throw new Error("No active drive");
+      const path = drive.selectedDrive?.path;
+      if (!path) throw new Error("No active drive");
       const res = await rpc.request.deleteMediaItems({
-        drivePath: selectedDrive.path,
+        drivePath: path,
         mediaIds,
       });
       if (!res.success) throw new Error(res.error || "Failed to delete items");
       return res.deletedCount;
     },
     onSuccess: (deletedCount) => {
-      deleteModalRef.current?.close();
-      useSelectionStore.getState().cancel();
+      deleteModalRef?.close();
+      selection.cancel();
       queryClient.invalidateQueries({
-        queryKey: ["album-media", selectedDrive?.path, albumId],
+        queryKey: ["album-media", drive.selectedDrive?.path, albumId()],
       });
       queryClient.invalidateQueries({
-        queryKey: ["album", selectedDrive?.path, albumId],
+        queryKey: ["album", drive.selectedDrive?.path, albumId()],
       });
       console.log(`Successfully deleted ${deletedCount} media items.`);
     },
     onError: (err: any) => {
       alert(err.message || "Failed to delete selected media items.");
     },
+  }));
+
+  const mediaItems = () => mediaQuery.data?.items || [];
+  const totalItems = () => mediaQuery.data?.total || 0;
+  const album = () => albumQuery.data;
+  const loading = () => albumQuery.isLoading || mediaQuery.isLoading;
+  const error = () =>
+    albumQuery.error?.message || mediaQuery.error?.message || null;
+
+  const setPage = (newPage: number) => {
+    navigate({
+      search: (prev: AlbumSearch) => ({ ...prev, page: newPage }),
+    });
+  };
+
+  const handleLimitChange = (newLimit: number) => {
+    navigate({
+      search: (prev: AlbumSearch) => ({ ...prev, page: 0, limit: newLimit }),
+    });
+  };
+
+  const setSearchQuery = (newSearch: string) => {
+    navigate({
+      search: (prev: AlbumSearch) => ({ ...prev, page: 0, search: newSearch }),
+    });
+  };
+
+  const handleFilterChange = (newFilter: "all" | "images" | "videos") => {
+    navigate({
+      search: (prev: AlbumSearch) => ({ ...prev, page: 0, filter: newFilter }),
+    });
+  };
+
+  const handleSortByChange = (newSortBy: "date" | "name" | "size") => {
+    navigate({
+      search: (prev: AlbumSearch) => ({ ...prev, page: 0, sortBy: newSortBy }),
+    });
+  };
+
+  const toggleSortOrder = () => {
+    navigate({
+      search: (prev: AlbumSearch) => ({
+        ...prev,
+        page: 0,
+        sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
+      }),
+    });
+  };
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({
+      queryKey: ["album", drive.selectedDrive?.path, albumId()],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["album-media", drive.selectedDrive?.path, albumId()],
+    });
+  };
+
+  const handleMoveSuccess = () => {
+    selection.cancel();
+  };
+
+  const totalPages = () => Math.ceil(totalItems() / (search().limit || 100));
+
+  const allSelected = createMemo(() => {
+    const items = mediaItems();
+    return items.length > 0 && items.every((i) => selection.selected.has(i.id));
   });
 
-  const mediaItems = mediaData.items;
-  const totalItems = mediaData.total;
-  const loading = isAlbumLoading || isMediaLoading;
-  const error = albumError?.message || mediaError?.message || null;
-
-  const chunkedMedias = useMemo(() => chunk(mediaItems, 4), [mediaItems]);
-
-  const setPage = useCallback(
-    (newPage: number) =>
-      navigate({ search: (prev) => ({ ...prev, page: newPage }) }),
-    [navigate],
-  );
-
-  const handleLimitChange = useCallback(
-    (newLimit: number) =>
-      navigate({ search: (prev) => ({ ...prev, page: 0, limit: newLimit }) }),
-    [navigate],
-  );
-
-  const setSearchQuery = useCallback(
-    (newSearch: string) =>
-      navigate({ search: (prev) => ({ ...prev, page: 0, search: newSearch }) }),
-    [navigate],
-  );
-
-  const handleFilterChange = useCallback(
-    (newFilter: "all" | "images" | "videos") =>
-      navigate({ search: (prev) => ({ ...prev, page: 0, filter: newFilter }) }),
-    [navigate],
-  );
-
-  const handleSortByChange = useCallback(
-    (newSortBy: "date" | "name" | "size") =>
-      navigate({ search: (prev) => ({ ...prev, page: 0, sortBy: newSortBy }) }),
-    [navigate],
-  );
-
-  const toggleSortOrder = useCallback(
-    () =>
-      navigate({
-        search: (prev) => ({
-          ...prev,
-          page: 0,
-          sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
-        }),
-      }),
-    [navigate],
-  );
-
-  const handleRefresh = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: ["album", selectedDrive?.path, albumId],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ["album-media", selectedDrive?.path, albumId],
-    });
-  }, [queryClient, selectedDrive?.path, albumId]);
-
-  const handleMoveSuccess = useCallback(() => {
-    cancelSelection();
-  }, [cancelSelection]);
-
-  // isSelecting removed from deps — the class is now applied by SelectableMediaGrid.
-  const renderMediaRow = useCallback(
-    ({ item: rowItems }: { item: MediaItem[] }) => (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
-        {rowItems.map((item) => (
-          <MediaCard
-            key={item.id}
-            item={item}
-            drivePath={selectedDrive?.path ?? ""}
-            albumId={albumId}
-          />
-        ))}
-        {rowItems.length < 4 &&
-          Array.from({ length: 4 - rowItems.length }).map((_, idx) => (
-            <div key={`empty-${idx}`} className="hidden md:block" />
-          ))}
-      </div>
-    ),
-    [selectedDrive?.path, albumId],
-  );
-
-  if (!selectedDrive) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          <Compass className="w-10 h-10 text-base-content/40 group-hover:text-primary transition-colors duration-300" />
-        </div>
-        <h3 className="text-2xl font-black text-base-content mb-2">
-          No Drive Selected
-        </h3>
-        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
-          Please select a connected drive or storage volume from the sidebar to
-          inspect cataloged albums.
-        </p>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-base-200 text-[10px] text-base-content/40 font-medium">
-          <Info className="w-3.5 h-3.5" />
-          Select a drive then scan it under the Discover tab.
-        </div>
-      </div>
-    );
-  }
-
-  if (selectedDrive.status === "unmounted") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
-        <div className="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-tr from-warning/10 to-transparent opacity-100 transition-opacity duration-300" />
-          <HardDrive className="w-10 h-10 text-base-content/40 group-hover:text-warning transition-colors duration-300 animate-pulse" />
-        </div>
-        <h3 className="text-2xl font-black text-base-content mb-2">
-          {selectedDrive.name} is Unmounted
-        </h3>
-        <p className="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
-          This storage device needs to be mounted before you can view its
-          albums.
-        </p>
-        <button
-          onClick={async () => {
-            try {
-              const res = await rpc.request.mountBlockDevice({
-                deviceId: selectedDrive.id,
-              });
-              if (res.success && res.mountPath) await fetchDrives();
-              else alert(`Failed to mount: ${res.error}`);
-            } catch (err: any) {
-              console.error(err);
-            }
-          }}
-          className="btn btn-primary px-8 font-bold text-sm tracking-wide shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-        >
-          Mount Drive
-        </button>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6 max-w-5xl">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() =>
-              window.history.length > 1
-                ? window.history.back()
-                : navigate({ to: "/albums" })
-            }
-            className="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content cursor-pointer"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" /> Back
-          </button>
-        </div>
-        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
-          <Info className="w-12 h-12 text-error mx-auto mb-4" />
-          <h3 className="text-base-content font-bold">Error Loading Album</h3>
-          <p className="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
-            {error}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const totalPages = Math.ceil(totalItems / limit);
-
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Back */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() =>
-            window.history.length > 1
-              ? window.history.back()
-              : navigate({ to: "/albums" })
-          }
-          className="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content rounded-lg transition-colors cursor-pointer"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" /> Back
-        </button>
-      </div>
-
-      {/* Album Header */}
-      <div className="p-6 rounded-2xl bg-linear-0 from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 bg-base-200">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
-            <FolderOpen className="w-6 h-6 text-primary-content" />
+    <Show
+      when={drive.selectedDrive}
+      fallback={
+        <div class="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
+          <div class="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+            <div class="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <Compass class="w-10 h-10 text-base-content/40 group-hover:text-primary transition-colors duration-300" />
           </div>
-          <div>
-            <h2 className="text-xl font-black text-base-content leading-tight">
-              {album?.name === "unknown"
-                ? "Unsorted Media"
-                : album?.name || "Loading Album..."}
-            </h2>
-            <span className="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider block mt-0.5">
-              {album?.relative_path} · {totalItems} items
-            </span>
+          <h3 class="text-2xl font-black text-base-content mb-2">
+            No Drive Selected
+          </h3>
+          <p class="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
+            Please select a connected drive or storage volume from the sidebar
+            to inspect cataloged albums.
+          </p>
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-base-100/60 border border-base-200 text-[10px] text-base-content/40 font-medium">
+            <Info class="w-3.5 h-3.5" />
+            Select a drive then scan it under the Discover tab.
           </div>
         </div>
-
-        <div className="flex items-center gap-3 ml-auto md:ml-0">
-          {album && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-base-300 text-[10px] text-base-content/60 font-mono">
-              <Calendar className="w-3.5 h-3.5 text-base-content/40" />
-              <span>
-                Indexed: {new Date(album.created_at).toLocaleDateString()}
-              </span>
+      }
+    >
+      <Show
+        when={drive.selectedDrive!.status !== "unmounted"}
+        fallback={
+          <div class="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 sm:p-12">
+            <div class="w-20 h-20 rounded-full bg-base-100 border border-base-300 flex items-center justify-center mb-6 shadow-xl relative overflow-hidden group">
+              <div class="absolute inset-0 bg-gradient-to-tr from-warning/10 to-transparent opacity-100 transition-opacity duration-300" />
+              <HardDrive class="w-10 h-10 text-base-content/40 group-hover:text-warning transition-colors duration-300 animate-pulse" />
             </div>
-          )}
-          <SelectionControls
-            mediaItems={mediaItems}
-            onStart={startSelection}
-            onCancel={cancelSelection}
-          />
-        </div>
-      </div>
-
-      {/* Filter, Search & Sort Bar */}
-      <div className="border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="w-full md:max-w-xs">
-          <SearchBar value={search} onChange={setSearchQuery} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="tabs tabs-boxed bg-base-300 border border-base-200/50 p-0.5">
+            <h3 class="text-2xl font-black text-base-content mb-2">
+              {drive.selectedDrive!.name} is Unmounted
+            </h3>
+            <p class="text-base-content/60 text-sm max-w-sm leading-relaxed mb-6">
+              This storage device needs to be mounted before you can view its
+              albums.
+            </p>
             <button
-              onClick={() => handleFilterChange("all")}
-              className={`tab tab-sm font-bold rounded-lg ${filter === "all" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => handleFilterChange("images")}
-              className={`tab tab-sm font-bold rounded-lg ${filter === "images" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
-            >
-              Photos
-            </button>
-            <button
-              onClick={() => handleFilterChange("videos")}
-              className={`tab tab-sm font-bold rounded-lg ${filter === "videos" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
-            >
-              Videos
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-base-content/60 font-semibold">
-              Sort:
-            </span>
-            <select
-              value={sortBy}
-              onChange={(e) =>
-                handleSortByChange(e.target.value as "date" | "name" | "size")
-              }
-              className="select select-bordered select-sm text-xs bg-base-100/60 border-base-300 text-base-content/80 rounded-lg focus:outline-none focus:border-primary/60 cursor-pointer"
-            >
-              <option value="date">Date Added</option>
-              <option value="name">File Name</option>
-              <option value="size">File Size</option>
-            </select>
-          </div>
-
-          <button
-            onClick={toggleSortOrder}
-            className="btn btn-sm btn-outline border-base-300 text-base-content/80 hover:bg-base-100 px-2 cursor-pointer font-bold flex items-center gap-1"
-            title={sortOrder === "asc" ? "Ascending order" : "Descending order"}
-          >
-            {sortOrder === "asc" ? (
-              <span className="text-xs">ASC ↑</span>
-            ) : (
-              <span className="text-xs">DESC ↓</span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Control Bar */}
-      <div className="flex justify-between items-center gap-2 bg-base-300/50 border border-base-200 px-4 py-2.5 rounded-xl shadow-md">
-        <button
-          onClick={handleRefresh}
-          disabled={loading}
-          className="btn btn-xs btn-outline border-base-300 text-base-content/80 gap-1.5 font-bold hover:bg-base-100 cursor-pointer"
-        >
-          <RotateCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-base-content/60 font-medium">
-            Items per page:
-          </span>
-          <select
-            value={limit}
-            onChange={(e) => handleLimitChange(Number(e.target.value))}
-            className="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60 cursor-pointer"
-          >
-            {[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640].map(
-              (val) => (
-                <option key={val} value={val}>
-                  {val}
-                </option>
-              ),
-            )}
-          </select>
-        </div>
-      </div>
-
-      {/* Media Grid */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center min-h-[40vh] py-12">
-          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-xs text-base-content/40 font-bold">
-            Loading Album Content...
-          </p>
-        </div>
-      ) : mediaItems.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
-          <ImageIcon className="w-12 h-12 text-base-content/20 mx-auto mb-4" />
-          <h3 className="text-base-content font-bold">No Items Found</h3>
-          <p className="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
-            This album is currently empty.
-          </p>
-        </div>
-      ) : (
-        <SelectableMediaGrid data={chunkedMedias} renderItem={renderMediaRow} />
-      )}
-
-      <Pagination
-        page={page}
-        totalPages={totalPages}
-        totalItems={totalItems}
-        onPageChange={setPage}
-      />
-
-      {/* Selection Floating Bar */}
-      <SelectionFloatingBar
-        onMove={(ids) => moveModalRef.current?.open(ids)}
-        onDelete={() => deleteModalRef.current?.open()}
-        onClear={clearSelection}
-      />
-
-      <MoveToAlbumModal
-        ref={moveModalRef}
-        drivePath={selectedDrive.path}
-        currentAlbumId={albumId}
-        onSuccess={handleMoveSuccess}
-      />
-
-      <DialogModal
-        ref={deleteModalRef}
-        title="Delete Media Items"
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => deleteModalRef.current?.close()}
-              className="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const { selected } = useSelectionStore.getState();
-                deleteMediaMutation.mutate(Array.from(selected));
+              onClick={async () => {
+                try {
+                  const res = await rpc.request.mountBlockDevice({
+                    deviceId: drive.selectedDrive!.id,
+                  });
+                  if (res.success && res.mountPath) await drive.fetchDrives();
+                  else alert(`Failed to mount: ${res.error}`);
+                } catch (err: any) {
+                  console.error(err);
+                }
               }}
-              disabled={deleteMediaMutation.isPending}
-              className="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
+              class="btn btn-primary px-8 font-bold text-sm tracking-wide shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              {deleteMediaMutation.isPending
-                ? "Deleting..."
-                : "Delete Permanently"}
+              Mount Drive
             </button>
-          </>
+          </div>
         }
       >
-        <DeleteDialogBody />
-      </DialogModal>
-    </div>
+        <Show
+          when={!error()}
+          fallback={
+            <div class="space-y-6 max-w-5xl">
+              <div class="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    window.history.length > 1
+                      ? window.history.back()
+                      : navigate({ to: "/albums" })
+                  }
+                  class="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content cursor-pointer"
+                >
+                  <ChevronLeft class="w-3.5 h-3.5" /> Back
+                </button>
+              </div>
+              <div class="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
+                <Info class="w-12 h-12 text-error mx-auto mb-4" />
+                <h3 class="text-base-content font-bold">Error Loading Album</h3>
+                <p class="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
+                  {error()}
+                </p>
+              </div>
+            </div>
+          }
+        >
+          <div class="space-y-6 max-w-5xl">
+            {/* Back */}
+            <div class="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  window.history.length > 1
+                    ? window.history.back()
+                    : navigate({ to: "/albums" })
+                }
+                class="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content rounded-lg transition-colors cursor-pointer"
+              >
+                <ChevronLeft class="w-3.5 h-3.5" /> Back
+              </button>
+            </div>
+
+            {/* Album Header */}
+            <div class="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 bg-base-200">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
+                  <FolderOpen class="w-6 h-6 text-primary-content" />
+                </div>
+                <div>
+                  <h2 class="text-xl font-black text-base-content leading-tight">
+                    {album()?.name === "unknown"
+                      ? "Unsorted Media"
+                      : album()?.name || "Loading Album..."}
+                  </h2>
+                  <span class="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider block mt-0.5">
+                    {album()?.relative_path} · {totalItems()} items
+                  </span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-3 ml-auto md:ml-0">
+                <Show when={album()}>
+                  <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-base-300 text-[10px] text-base-content/60 font-mono">
+                    <Calendar class="w-3.5 h-3.5 text-base-content/40" />
+                    <span>
+                      Indexed:{" "}
+                      {new Date(album()!.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </Show>
+
+                {/* Selection controls */}
+                <Show when={selection.isSelecting && mediaItems().length > 0}>
+                  <button
+                    onClick={() => {
+                      if (allSelected()) {
+                        selection.deselectMany(mediaItems().map((i) => i.id));
+                      } else {
+                        selection.selectMany(mediaItems().map((i) => i.id));
+                      }
+                    }}
+                    class="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
+                  >
+                    {allSelected() ? "Deselect All" : "Select All"}
+                  </button>
+                </Show>
+
+                <button
+                  onClick={() =>
+                    selection.isSelecting
+                      ? selection.cancel()
+                      : selection.start()
+                  }
+                  class={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
+                    selection.isSelecting
+                      ? "btn-secondary text-secondary-content"
+                      : "btn-outline border-base-300 text-base-content/80"
+                  }`}
+                >
+                  {selection.isSelecting ? "Cancel" : "Select Items"}
+                </button>
+              </div>
+            </div>
+
+            {/* Filter, Search & Sort Bar */}
+            <div class="border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div class="w-full md:max-w-xs">
+                <SearchBar value={search().search} onChange={setSearchQuery} />
+              </div>
+
+              <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                <div class="tabs tabs-boxed bg-base-300 border border-base-200/50 p-0.5">
+                  <button
+                    onClick={() => handleFilterChange("all")}
+                    class={`tab tab-sm font-bold rounded-lg ${search().filter === "all" || !search().filter ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => handleFilterChange("images")}
+                    class={`tab tab-sm font-bold rounded-lg ${search().filter === "images" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
+                  >
+                    Photos
+                  </button>
+                  <button
+                    onClick={() => handleFilterChange("videos")}
+                    class={`tab tab-sm font-bold rounded-lg ${search().filter === "videos" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
+                  >
+                    Videos
+                  </button>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-base-content/60 font-semibold">
+                    Sort:
+                  </span>
+                  <select
+                    value={search().sortBy || "date"}
+                    onChange={(e) =>
+                      handleSortByChange(
+                        e.currentTarget.value as "date" | "name" | "size",
+                      )
+                    }
+                    class="select select-bordered select-sm text-xs bg-base-100/60 border-base-300 text-base-content/80 rounded-lg focus:outline-none focus:border-primary/60 cursor-pointer"
+                  >
+                    <option value="date">Date Added</option>
+                    <option value="name">File Name</option>
+                    <option value="size">File Size</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={toggleSortOrder}
+                  class="btn btn-sm btn-outline border-base-300 text-base-content/80 hover:bg-base-100 px-2 cursor-pointer font-bold flex items-center gap-1"
+                  title={
+                    search().sortOrder === "asc"
+                      ? "Ascending order"
+                      : "Descending order"
+                  }
+                >
+                  {search().sortOrder === "asc" ? (
+                    <span class="text-xs">ASC ↑</span>
+                  ) : (
+                    <span class="text-xs">DESC ↓</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Control Bar */}
+            <div class="flex justify-between items-center gap-2 bg-base-300/50 border border-base-200 px-4 py-2.5 rounded-xl shadow-md">
+              <button
+                onClick={handleRefresh}
+                disabled={loading()}
+                class="btn btn-xs btn-outline border-base-300 text-base-content/80 gap-1.5 font-bold hover:bg-base-100 cursor-pointer"
+              >
+                <RotateCw
+                  class={`w-3 h-3 ${loading() ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </button>
+
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-base-content/60 font-medium">
+                  Items per page:
+                </span>
+                <select
+                  value={search().limit || 100}
+                  onChange={(e) =>
+                    handleLimitChange(Number(e.currentTarget.value))
+                  }
+                  class="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60 cursor-pointer"
+                >
+                  <For
+                    each={[
+                      10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640,
+                    ]}
+                  >
+                    {(val) => <option value={val}>{val}</option>}
+                  </For>
+                </select>
+              </div>
+            </div>
+
+            {/* Media Grid */}
+            <Show
+              when={!loading() || mediaItems().length > 0}
+              fallback={
+                <div class="flex flex-col items-center justify-center min-h-[40vh] py-12">
+                  <Loader2 class="w-10 h-10 text-primary animate-spin mb-4" />
+                  <p class="text-xs text-base-content/40 font-bold">
+                    Loading Album Content...
+                  </p>
+                </div>
+              }
+            >
+              <Show
+                when={mediaItems().length > 0}
+                fallback={
+                  <div class="p-12 text-center rounded-2xl bg-base-100/20 border border-base-200/50">
+                    <ImageIcon class="w-12 h-12 text-base-content/20 mx-auto mb-4" />
+                    <h3 class="text-base-content font-bold">No Items Found</h3>
+                    <p class="text-base-content/40 text-xs mt-1.5 max-w-sm mx-auto">
+                      This album is currently empty.
+                    </p>
+                  </div>
+                }
+              >
+                <div
+                  class={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 ${selection.isSelecting ? "is-selecting" : ""}`}
+                >
+                  <For each={mediaItems()}>
+                    {(item) => (
+                      <MediaCard
+                        item={item}
+                        drivePath={drive.selectedDrive?.path ?? ""}
+                        albumId={albumId()}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </Show>
+
+            <Pagination
+              page={search().page || 0}
+              totalPages={totalPages()}
+              totalItems={totalItems()}
+              onPageChange={setPage}
+            />
+
+            {/* Selection Floating Bar */}
+            <Show when={selection.isSelecting && selection.selected.size > 0}>
+              <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-xs max-w-lg w-full justify-between">
+                <div class="text-sm font-bold text-base-content">
+                  <span class="text-primary mr-1.5">
+                    {selection.selected.size}
+                  </span>
+                  {selection.selected.size === 1 ? "item" : "items"} selected
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    onClick={() => selection.clear()}
+                    class="btn btn-xs btn-ghost text-base-content/60 hover:text-base-content font-medium"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    onClick={() => deleteModalRef?.open()}
+                    class="btn btn-xs btn-outline btn-error font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash class="w-3.5 h-3.5" /> Delete
+                  </button>
+                  <button
+                    onClick={() => {
+                      const ids = Array.from(selection.selected) as number[];
+                      moveModalRef?.open(ids);
+                    }}
+                    class="btn btn-xs btn-primary font-bold shadow-lg shadow-primary/25 flex items-center gap-1 cursor-pointer"
+                  >
+                    <FolderPlus class="w-3.5 h-3.5" /> Move to Album
+                  </button>
+                </div>
+              </div>
+            </Show>
+
+            <MoveToAlbumModal
+              ref={(el) => (moveModalRef = el)}
+              drivePath={drive.selectedDrive!.path}
+              currentAlbumId={albumId()}
+              onSuccess={handleMoveSuccess}
+            />
+
+            <DialogModal
+              ref={(el) => (deleteModalRef = el)}
+              title="Delete Media Items"
+              actions={
+                <>
+                  <button
+                    type="button"
+                    onClick={() => deleteModalRef?.close()}
+                    class="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteMediaMutation.mutate(
+                        Array.from(selection.selected),
+                      );
+                    }}
+                    disabled={deleteMediaMutation.isPending}
+                    class="btn btn-sm btn-error font-bold shadow-lg shadow-error/25 text-error-content"
+                  >
+                    {deleteMediaMutation.isPending
+                      ? "Deleting..."
+                      : "Delete Permanently"}
+                  </button>
+                </>
+              }
+            >
+              <div class="space-y-3 text-left">
+                <p class="text-xs text-base-content/70 leading-relaxed">
+                  Are you sure you want to permanently delete the{" "}
+                  <span class="font-bold text-base-content">
+                    {selection.selected.size}
+                  </span>{" "}
+                  selected media file
+                  {selection.selected.size === 1 ? "" : "s"}?
+                </p>
+                <div class="alert alert-error text-xs p-3 rounded-xl flex gap-2 items-start leading-relaxed bg-error/10 border-error/20 text-base-content">
+                  <Info class="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span class="font-bold block mb-0.5">
+                      Warning: Permanent Deletion
+                    </span>
+                    This will physically delete the selected files from your
+                    disk and database cache. This action{" "}
+                    <span class="font-bold">cannot</span> be undone.
+                  </div>
+                </div>
+              </div>
+            </DialogModal>
+          </div>
+        </Show>
+      </Show>
+    </Show>
   );
 }

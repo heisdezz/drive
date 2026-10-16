@@ -1,37 +1,41 @@
-import { SearchIcon } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { useDebouncedCallback } from "use-debounce";
+import { createSignal, createEffect } from "solid-js";
+import { Search } from "lucide-solid";
 
-export default function SearchBar({ value, onChange }: any) {
-  const form = useForm({
-    defaultValues: {
-      search: value,
-    },
+export default function SearchBar(props: {
+  value?: string;
+  onChange: (val: string) => void;
+}) {
+  const [val, setVal] = createSignal(props.value || "");
+  let timer: any = null;
+
+  createEffect(() => {
+    setVal(props.value || "");
   });
 
-  const debouncedOnChange = useDebouncedCallback((val: string) => {
-    onChange(val);
-  }, 500);
+  const handleInput = (newVal: string) => {
+    setVal(newVal);
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      props.onChange(newVal);
+    }, 500);
+  };
+
+  const handleSubmit = (e: Event) => {
+    e.preventDefault();
+    if (timer) clearTimeout(timer);
+    props.onChange(val());
+  };
 
   return (
-    <form
-      className="flex"
-      onSubmit={form.handleSubmit((data) => {
-        debouncedOnChange.cancel();
-        onChange(data.search);
-      })}
-    >
+    <form class="flex" onSubmit={handleSubmit}>
       <input
-        className="input "
-        {...form.register("search")}
+        class="input input-sm w-full bg-base-100/60 border-base-300 text-xs text-base-content"
+        value={val()}
         placeholder="search here..."
-        onChange={(e) => {
-          form.setValue("search", e.target.value);
-          debouncedOnChange(e.target.value);
-        }}
+        onInput={(e) => handleInput(e.currentTarget.value)}
       />
-      <button className="btn ml-2 btn-primary btn-square" type="submit">
-        <SearchIcon className="size-5" />
+      <button class="btn btn-sm ml-2 btn-primary btn-square" type="submit">
+        <Search class="size-4" />
       </button>
     </form>
   );

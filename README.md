@@ -21,6 +21,9 @@ The installer to share is printed at the end of the build and copied to
 `release/stable/`. For a canary build, run `bun run build:canary` and find its
 installer in `release/canary/`.
 
+Pushes to `main` build Linux and macOS stable installers and attach them to a
+GitHub Release. The update files in `artifacts/` stay out of the release assets.
+
 On Linux, the release file is a `.tar.gz` archive. Extract it and run the
 `installer` inside. On Windows, extract the release `.zip` and run the setup
 program. On macOS, open the release `.dmg`.

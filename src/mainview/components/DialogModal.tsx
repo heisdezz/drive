@@ -62,7 +62,7 @@ export default function DialogModal(props: ModalProps) {
           </div>
         </Show>
       </div>
-      <form method="dialog" class="modal-backdrop bg-black/60 backdrop-blur-sm">
+      <form method="dialog" class="modal-backdrop bg-black/60 bg-opacity-80">
         <button>close</button>
       </form>
     </dialog>

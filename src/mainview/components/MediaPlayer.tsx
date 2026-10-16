@@ -64,7 +64,7 @@ export function MediaPlayer(props: MediaPlayerProps) {
           to="/item/$id"
           params={{ id: String(props.prevId) }}
           search={props.albumId ? { albumId: props.albumId } : undefined}
-          style={{ "will-change": "transform" }}
+          
           class="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/90 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-xl transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
           title="Previous item (Left Arrow)"
         >
@@ -78,7 +78,7 @@ export function MediaPlayer(props: MediaPlayerProps) {
           to="/item/$id"
           params={{ id: String(props.nextId) }}
           search={props.albumId ? { albumId: props.albumId } : undefined}
-          style={{ "will-change": "transform" }}
+          
           class="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3.5 rounded-full bg-base-300/90 hover:bg-base-100 border border-base-300/80 hover:border-base-content/20 text-base-content/60 hover:text-base-content shadow-lg transition-all md:opacity-0 md:group-hover:opacity-100 opacity-90 duration-200 cursor-pointer flex items-center justify-center hover:scale-105 active:scale-95"
           title="Next item (Right Arrow)"
         >

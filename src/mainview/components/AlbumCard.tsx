@@ -7,11 +7,13 @@ export interface Album {
   id: number;
   name: string;
   relative_path: string;
-  description?: string;
+  description: string | null;
   created_at: string;
   media_count: number;
   preview_item?: {
+    id: number;
     file_hash: string;
+    original_relative_path: string;
     current_relative_path: string;
     mime_type: string;
   };
@@ -46,8 +48,9 @@ function AlbumCover(props: AlbumCoverProps) {
       <img
         src={thumbUrl()!}
         alt={displayName()}
+        loading="lazy"
         onError={() => setHasError(true)}
-        class="w-full h-full object-cover transition-transform duration-500 ease-out will-change-transform transform-gpu group-hover:scale-105 pointer-events-none"
+        class="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 pointer-events-none"
       />
     </Show>
   );
@@ -70,7 +73,7 @@ export function AlbumCard(props: AlbumCardProps) {
         "content-visibility": "auto",
         "contain-intrinsic-size": "auto 320px",
       }}
-      class="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-[transform,box-shadow,border-color] duration-300 ease-out hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer transform-gpu isolate"
+      class="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-[transform,box-shadow,border-color] duration-300 ease-out hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer"
     >
       <div class="aspect-[4/3] w-full relative overflow-hidden bg-base-300 flex items-center justify-center pointer-events-none">
         <AlbumCover

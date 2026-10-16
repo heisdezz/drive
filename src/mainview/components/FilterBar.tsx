@@ -70,7 +70,7 @@ export function FilterBar(props: FilterBarProps) {
     (props.sortOrder && props.sortOrder !== "desc");
 
   return (
-    <div class="p-4 rounded-2xl bg-base-200/40 backdrop-blur-xs border border-base-200/80 shadow-lg flex flex-col md:flex-row gap-4 items-center justify-between transition-all duration-300">
+    <div class="p-4 rounded-2xl bg-base-200/40 border border-base-200/80 shadow-lg flex flex-col md:flex-row gap-4 items-center justify-between transition-all duration-300">
       {/* Left section: Filter Type Segmented Control & Active Reset Button */}
       <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
         <div class="p-1 rounded-xl bg-base-300/80 border border-base-200/60 flex items-center gap-1 shadow-inner">

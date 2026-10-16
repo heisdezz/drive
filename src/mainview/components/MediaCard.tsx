@@ -36,10 +36,13 @@ export function MediaCard(props: MediaCardProps) {
   const selection = useSelectionStore();
   const [hasError, setHasError] = createSignal(false);
   const [inView, setInView] = createSignal(false);
-  let cardRef: HTMLAnchorElement | undefined;
+  let containerRef: HTMLDivElement | undefined;
 
   onMount(() => {
-    if (!cardRef || !settings.show_thumbnails) return;
+    if (!containerRef || !settings.show_thumbnails) {
+      setInView(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -49,7 +52,7 @@ export function MediaCard(props: MediaCardProps) {
       },
       { rootMargin: "300px" },
     );
-    observer.observe(cardRef);
+    observer.observe(containerRef);
     onCleanup(() => observer.disconnect());
   });
 
@@ -76,17 +79,19 @@ export function MediaCard(props: MediaCardProps) {
 
   return (
     <Link
-      ref={cardRef}
       to="/item/$id"
       params={{ id: String(props.item.id) }}
       search={props.albumId ? { albumId: props.albumId } : undefined}
       preload={false}
       onClick={handleClick}
       data-selected={isSelected() ? "true" : "false"}
-      class="group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-[box-shadow,border-color] duration-300 hover:shadow-2xl cursor-pointer border-base-200 hover:border-base-300 data-[selected=true]:ring-2 data-[selected=true]:ring-primary data-[selected=true]:border-primary data-[selected=true]:hover:border-primary transform-gpu isolate"
+      class="group relative rounded-2xl overflow-hidden bg-base-300/60 border shadow-lg aspect-square flex flex-col justify-end transition-[box-shadow,border-color] duration-300 hover:shadow-2xl cursor-pointer border-base-200 hover:border-base-300 data-[selected=true]:ring-2 data-[selected=true]:ring-primary data-[selected=true]:border-primary data-[selected=true]:hover:border-primary"
     >
       {/* Media content */}
-      <div class="absolute inset-0 flex items-center justify-center bg-base-300 overflow-hidden pointer-events-none">
+      <div
+        ref={(el) => (containerRef = el)}
+        class="absolute inset-0 flex items-center justify-center bg-base-300 overflow-hidden pointer-events-none"
+      >
         <Show
           when={settings.show_thumbnails && !hasError() && inView()}
           fallback={
@@ -107,14 +112,15 @@ export function MediaCard(props: MediaCardProps) {
           <img
             src={thumbUrl()}
             alt={fileName()}
+            loading="lazy"
             onError={() => setHasError(true)}
-            class="w-full h-full object-cover transition-transform duration-300 ease-out will-change-transform transform-gpu group-hover:scale-105"
+            class="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
           />
         </Show>
       </div>
 
       {/* Media type badge */}
-      <div class="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300/90 backdrop-blur-sm border border-base-200/80 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md pointer-events-none z-10">
+      <div class="absolute top-3 right-3 px-2 py-1 rounded-md bg-base-300 border border-base-200/80 flex items-center gap-1 text-[9px] font-bold text-base-content shadow-md pointer-events-none z-10">
         <Show
           when={isVideo()}
           fallback={
@@ -134,14 +140,14 @@ export function MediaCard(props: MediaCardProps) {
             type="checkbox"
             checked={isSelected()}
             readOnly
-            class="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300/90 checkbox-sm cursor-pointer shadow-lg"
+            class="checkbox checkbox-primary border-2 border-base-content/60 checked:border-primary bg-base-300 checkbox-sm cursor-pointer shadow-lg"
           />
         </div>
       </Show>
 
       {/* Album badge */}
       <Show when={props.item.album_name && !selection.isSelecting}>
-        <div class="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300/90 backdrop-blur-sm border border-base-200/80 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] flex items-center gap-1">
+        <div class="absolute top-3 left-3 px-2 py-1 rounded-md bg-base-300 border border-base-200/80 text-[9px] font-bold text-base-content shadow-md z-10 pointer-events-none truncate max-w-[60%] flex items-center gap-1">
           <Folder class="w-2.5 h-2.5 text-primary fill-primary/10 shrink-0" />
           <span class="truncate">
             {props.item.album_name === "unknown"

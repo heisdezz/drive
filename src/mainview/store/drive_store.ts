@@ -24,7 +24,14 @@ async function fetchDrives() {
     const current = selectedDrive();
     if (current) {
       const updated = (drives || []).find((d) => d.id === current.id);
-      if (updated) {
+      if (
+        updated &&
+        (updated.path !== current.path ||
+          updated.status !== current.status ||
+          updated.usedPercentage !== current.usedPercentage ||
+          updated.size !== current.size ||
+          updated.name !== current.name)
+      ) {
         setSelectedDrive(updated);
       }
     }
@@ -35,34 +42,28 @@ async function fetchDrives() {
   }
 }
 
-export function useDriveStore<T = any>(
-  selector?: (state: {
-    selectedDrive: Device | null;
-    devices: Device[];
-    loading: boolean;
-    selectDrive: (drive: Device | null) => void;
-    fetchDrives: () => Promise<void>;
-  }) => T,
-): any {
-  const state = {
-    get selectedDrive() {
-      return selectedDrive();
-    },
-    get devices() {
-      return devices();
-    },
-    get loading() {
-      return loading();
-    },
-    selectDrive: setSelectedDrive,
-    fetchDrives,
-  };
+const state = {
+  get selectedDrive() {
+    return selectedDrive();
+  },
+  get devices() {
+    return devices();
+  },
+  get loading() {
+    return loading();
+  },
+  selectDrive: setSelectedDrive,
+  fetchDrives,
+};
 
+export function useDriveStore<T = any>(selector?: (s: typeof state) => T): any {
   if (selector) {
     return selector(state);
   }
   return state;
 }
+
+useDriveStore.getState = () => state;
 
 export {
   selectedDrive,

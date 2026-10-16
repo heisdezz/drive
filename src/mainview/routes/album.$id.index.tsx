@@ -535,7 +535,7 @@ function AlbumDetailComponent() {
 
             {/* Selection Floating Bar */}
             <Show when={selection.isSelecting && selection.selected.size > 0}>
-              <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in backdrop-blur-xs max-w-lg w-full justify-between">
+              <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-300/95 border border-base-200 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-6 animate-fade-in max-w-lg w-full justify-between">
                 <div class="text-sm font-bold text-base-content">
                   <span class="text-primary mr-1.5">
                     {selection.selected.size}

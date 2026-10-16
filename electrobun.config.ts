@@ -2,9 +2,10 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
   app: {
-    name: "react-tailwind-vite",
-    identifier: "reacttailwindvite.electrobun.dev",
+    name: "D-Stream Desktop",
+    identifier: "io.github.heisdezz.dstream",
     version: "0.0.1",
+    description: "Browse and organize media on removable drives",
   },
   build: {
     // Vite builds to dist/, we copy from there

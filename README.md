@@ -38,3 +38,9 @@ program. On macOS, open the release `.dmg`.
 Electrobun's update archive in `artifacts/` is for the updater; the `-Setup`
 archive is the Linux installer. The repeated app folder and archive names in
 `build/` are packaging inputs, not additional releases.
+
+The installed app lives under `~/.local/share/io.github.heisdezz.dstream/` on
+Linux. Its `stable/app/` bundle contains the runtime, and `stable/self-extraction/`
+holds an archive Electrobun uses for updates. Earlier builds installed under
+`~/.local/share/reacttailwindvite.electrobun.dev/`; that installation remains
+separate and can be removed after the new app and its settings are checked.

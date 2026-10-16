@@ -1,7 +1,7 @@
 {
-  "name": "electrobun-react-tailwind-vite",
+  "name": "d-stream-desktop",
   "version": "1.0.0",
-  "description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
+  "description": "Browse and organize media on removable drives",
   "scripts": {
     "start": "vite build &&  electrobun dev",
     "dev": "vite build && electrobun dev --watch",

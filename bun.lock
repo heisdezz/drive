@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "electrobun-react-tailwind-vite",
+      "name": "d-stream-desktop",
       "dependencies": {
         "@kobalte/core": "^0.13.14",
         "@legendapp/list": "^3.6.0",

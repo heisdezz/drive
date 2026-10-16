@@ -43,7 +43,7 @@ startMediaServer();
 const url = await getMainViewUrl();
 
 new BrowserWindow({
-  title: "React + Tailwind + Vite",
+  title: "D-Stream Desktop",
   url,
   contextIsolation: true,
   rpc,
@@ -70,4 +70,4 @@ new BrowserWindow({
     : {}),
 } as any);
 
-addLog("info", "React Tailwind Vite app started!");
+addLog("info", "D-Stream Desktop started!");

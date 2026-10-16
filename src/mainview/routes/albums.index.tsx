@@ -1,9 +1,10 @@
 import { createSignal, createMemo, Show, For } from "solid-js";
-import { createFileRoute } from "@tanstack/solid-router";
-import { createQuery } from "@tanstack/solid-query";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/solid-router";
+import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import { useDriveStore } from "@/store/drive_store";
+import { useSettingsStore } from "@/store/settings_store";
 import { rpc } from "@/lib/rpc";
-import { Library, Loader2, FolderPlus } from "lucide-solid";
+import { Library, Loader2, FolderPlus, RotateCw } from "lucide-solid";
 import { AlbumCard, type Album } from "@/components/AlbumCard";
 import {
   CreateAlbumModal,
@@ -14,18 +15,48 @@ import {
   type AlbumDialogHandle,
 } from "@/components/EditAlbumModal";
 import { DeleteAlbumModal } from "@/components/DeleteAlbumModal";
+import { MergeAlbumModal } from "@/components/MergeAlbumModal";
 import {
   AlbumsFilterBar,
   type AlbumSortBy,
 } from "@/components/AlbumsFilterBar";
 import { NoDriveSelected, DriveUnmounted } from "@/components/AlbumsEmptyState";
 
+interface AlbumsSearch {
+  search?: string;
+}
+
 export const Route = createFileRoute("/albums/")({
   component: AlbumsIndexComponent,
+  validateSearch: (search: Record<string, unknown>): AlbumsSearch => ({
+    search: typeof search.search === "string" && search.search ? search.search : undefined,
+  }),
 });
 
 function AlbumsIndexComponent() {
   const drive = useDriveStore();
+  const settings = useSettingsStore();
+  const queryClient = useQueryClient();
+  const routeSearch = useSearch({ from: Route.id });
+  const navigate = useNavigate({ from: Route.id });
+  const [validating, setValidating] = createSignal(false);
+  const [validationMessage, setValidationMessage] = createSignal("");
+
+  const validateFiles = async () => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath) return;
+    setValidating(true);
+    try {
+      const result = await rpc.request.validateAlbumFiles({ drivePath });
+      if (!result.success) throw new Error(result.error || "Validation failed");
+      setValidationMessage(`Checked ${result.checked} files; removed ${result.removed} missing entries.`);
+      await queryClient.invalidateQueries({ queryKey: ["albums", drivePath] });
+    } catch (err: any) {
+      setValidationMessage(err.message || "Validation failed");
+    } finally {
+      setValidating(false);
+    }
+  };
 
   const albumsQuery = createQuery(() => ({
     queryKey: ["albums", drive.selectedDrive?.path],
@@ -39,15 +70,24 @@ function AlbumsIndexComponent() {
     enabled: !!drive.selectedDrive?.path,
   }));
 
-  const [searchQuery, setSearchQuery] = createSignal("");
+  const searchQuery = () => routeSearch().search || "";
+  const setSearchQuery = (value: string) => {
+    navigate({
+      search: (previous: AlbumsSearch) => ({ ...previous, search: value || undefined }),
+      replace: true,
+      resetScroll: false,
+    });
+  };
   const [sortBy, setSortBy] = createSignal<AlbumSortBy>("name");
 
   let createModalRef: ModalHandle | undefined;
   let editModalRef: AlbumDialogHandle | undefined;
   let deleteModalRef: AlbumDialogHandle | undefined;
+  let mergeModalRef: AlbumDialogHandle | undefined;
 
   const handleEdit = (album: Album) => editModalRef?.open(album);
   const handleDelete = (album: Album) => deleteModalRef?.open(album);
+  const handleMerge = (album: Album) => mergeModalRef?.open(album);
 
   const albums = () => albumsQuery.data || [];
 
@@ -77,7 +117,7 @@ function AlbumsIndexComponent() {
         when={drive.selectedDrive!.status !== "unmounted"}
         fallback={<DriveUnmounted drive={drive.selectedDrive!} />}
       >
-        <div class="space-y-6 max-w-5xl">
+        <div class="space-y-6 max-w-[1600px]">
           {/* Drive Header */}
           <div class="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div class="flex items-center gap-4">
@@ -93,6 +133,9 @@ function AlbumsIndexComponent() {
                 </span>
               </div>
             </div>
+            <button onClick={validateFiles} disabled={validating()} class="btn btn-sm btn-outline gap-1.5 ml-auto md:ml-0">
+              <RotateCw class={`w-3.5 h-3.5 ${validating() ? "animate-spin" : ""}`} /> Validate Files
+            </button>
             <button
               onClick={() => createModalRef?.open()}
               class="btn btn-sm btn-primary font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 ml-auto md:ml-0"
@@ -100,6 +143,8 @@ function AlbumsIndexComponent() {
               <FolderPlus class="w-3.5 h-3.5" /> Create Album
             </button>
           </div>
+
+          <Show when={validationMessage()}><p role="status" class="text-xs text-base-content/70">{validationMessage()}</p></Show>
 
           {/* Filter & Sort Bar */}
           <AlbumsFilterBar
@@ -135,7 +180,10 @@ function AlbumsIndexComponent() {
                 </div>
               }
             >
-              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              <div
+                class="catalog-grid catalog-grid--albums"
+                style={{ "--catalog-columns": settings.columns }}
+              >
                 <For each={filteredAlbums()}>
                   {(album) => (
                     <AlbumCard
@@ -143,6 +191,7 @@ function AlbumsIndexComponent() {
                       drivePath={drive.selectedDrive!.path}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
+                      onMerge={handleMerge}
                     />
                   )}
                 </For>
@@ -161,6 +210,11 @@ function AlbumsIndexComponent() {
           <DeleteAlbumModal
             ref={(el) => (deleteModalRef = el)}
             drivePath={drive.selectedDrive!.path}
+          />
+          <MergeAlbumModal
+            ref={(el) => (mergeModalRef = el)}
+            drivePath={drive.selectedDrive!.path}
+            albums={albums()}
           />
         </div>
       </Show>

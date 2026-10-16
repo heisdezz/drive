@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/solid-router";
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, onMount } from "solid-js";
 import { useSettingsStore } from "@/store/settings_store";
 import { useDriveStore } from "@/store/drive_store";
 import { rpc } from "@/lib/rpc";
@@ -21,6 +21,35 @@ export const Route = createFileRoute("/settings/")({
 function SettingsComponent() {
   const settings = useSettingsStore();
   const drive = useDriveStore();
+  const [syncPort, setSyncPort] = createSignal(8080);
+  const [syncBusy, setSyncBusy] = createSignal(false);
+  const [syncStatus, setSyncStatus] = createSignal<{ running: boolean; drivePath: string; port: number; url: string } | null>(null);
+  const [syncError, setSyncError] = createSignal("");
+
+  onMount(async () => {
+    try {
+      const status = await rpc.request.getMobileSyncStatus();
+      setSyncStatus(status);
+      setSyncPort(status.port);
+    } catch (err: any) { setSyncError(err.message); }
+  });
+
+  const toggleMobileSync = async () => {
+    setSyncBusy(true);
+    setSyncError("");
+    try {
+      if (syncStatus()?.running) {
+        setSyncStatus(await rpc.request.stopMobileSync());
+      } else {
+        const drivePath = drive.selectedDrive?.path;
+        if (!drivePath) throw new Error("Select a scanned drive first.");
+        const result = await rpc.request.startMobileSync({ drivePath, port: syncPort() });
+        if (!result.success) throw new Error(result.error || "Could not start mobile sync.");
+        setSyncStatus(result);
+      }
+    } catch (err: any) { setSyncError(err.message); }
+    finally { setSyncBusy(false); }
+  };
 
   // Local UI States
   const [activeTab, setActiveTab] = createSignal<"general" | "gdrive">(
@@ -406,9 +435,8 @@ function SettingsComponent() {
               <span>9</span>
             </div>
             <span class="text-[10px] text-base-content/45 leading-relaxed block mt-1">
-              Select the number of columns rendered in album grid view.
-              Constraints range from 4 (largest cards) to 9 (smallest, compact
-              cards).
+              Maximum columns in album and media grids on wide windows.
+              Narrow windows show fewer columns to keep cards readable.
             </span>
           </div>
 
@@ -470,6 +498,21 @@ function SettingsComponent() {
               class="toggle toggle-primary toggle-sm"
             />
           </div>
+        </div>
+
+        <div class="card bg-base-200/40 border border-base-200 shadow-xl rounded-2xl p-6 space-y-4">
+          <h3 class="text-sm font-bold text-base-content flex items-center gap-2"><Database class="w-4 h-4 text-primary" /> Local Network Mobile Sync</h3>
+          <p class="text-xs text-base-content/60">Share the selected drive's catalog, media, and thumbnails with devices on your local network. Anyone who can reach this port can access them while the server is on.</p>
+          <div class="flex flex-wrap gap-3 items-center">
+            <label class="text-xs font-bold" for="mobile-sync-port">Port</label>
+            <input id="mobile-sync-port" type="number" min="1" max="65535" value={syncPort()} disabled={syncStatus()?.running} onInput={e => setSyncPort(Number(e.currentTarget.value))} class="input input-bordered input-sm w-28" />
+            <button onClick={toggleMobileSync} disabled={syncBusy()} class="btn btn-sm btn-primary">{syncStatus()?.running ? "Stop Server" : "Start Server"}</button>
+          </div>
+          <Show when={syncStatus()?.running}>
+            <p role="status" class="text-xs">Active on {syncStatus()?.url} for {syncStatus()?.drivePath}</p>
+            <a class="link link-primary text-xs" href={`${syncStatus()?.url}/download/db`} target="_blank" rel="noreferrer">Download URL: {syncStatus()?.url}/download/db</a>
+          </Show>
+          <Show when={syncError()}><p role="alert" class="text-xs text-error">{syncError()}</p></Show>
         </div>
       </Show>
     </div>

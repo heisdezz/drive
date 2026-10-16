@@ -17,6 +17,35 @@ interface EditAlbumModalProps {
     | ((handle: AlbumDialogHandle) => void);
 }
 
+interface EditVariables {
+  albumId: number;
+  oldName: string;
+  name: string;
+  description: string | null;
+}
+
+function replaceAlbumPrefix(value: string, oldPrefix: string, newPrefix: string): string {
+  if (value === oldPrefix) return newPrefix;
+  return value.startsWith(`${oldPrefix}/`) ? `${newPrefix}${value.slice(oldPrefix.length)}` : value;
+}
+
+function applyAlbumEdit(album: Album, edit: EditVariables): Album {
+  const name = replaceAlbumPrefix(album.name, edit.oldName, edit.name);
+  if (album.id !== edit.albumId && name === album.name) return album;
+  const oldPath = `albums/${edit.oldName}`;
+  const newPath = `albums/${edit.name}`;
+  return {
+    ...album,
+    name,
+    relative_path: replaceAlbumPrefix(album.relative_path, oldPath, newPath),
+    description: album.id === edit.albumId ? edit.description : album.description,
+    preview_item: album.preview_item && {
+      ...album.preview_item,
+      current_relative_path: replaceAlbumPrefix(album.preview_item.current_relative_path, oldPath, newPath),
+    },
+  };
+}
+
 export function EditAlbumModal(props: EditAlbumModalProps) {
   let modalRef: ModalHandle | undefined;
   const queryClient = useQueryClient();
@@ -39,29 +68,36 @@ export function EditAlbumModal(props: EditAlbumModalProps) {
   onMount(() => {
     if (typeof props.ref === "function") {
       props.ref(handle);
-    } else if (props.ref && typeof props.ref === "object") {
-      (props.ref as any).current = handle;
+    } else if (props.ref && typeof props.ref === "object" && "current" in props.ref) {
+      props.ref.current = handle;
     }
   });
 
   const mutation = createMutation(() => ({
-    mutationFn: async (variables: {
-      albumId: number;
-      name: string;
-      description?: string;
-    }) => {
+    mutationFn: async (variables: EditVariables) => {
       const res = await rpc.request.editAlbum({
         drivePath: props.drivePath,
         albumId: variables.albumId,
         newName: variables.name,
-        newDescription: variables.description,
+        newDescription: variables.description ?? undefined,
       });
       if (!res.success) {
         throw new Error(res.error || "Failed to update album");
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["albums", props.drivePath] });
+    onSuccess: (_, edit) => {
+      queryClient.setQueryData<Album[]>(["albums", props.drivePath], (albums) =>
+        albums?.map((album) => applyAlbumEdit(album, edit)),
+      );
+      queryClient.setQueriesData<Album | null>(
+        { queryKey: ["album", props.drivePath] },
+        (album) => album ? applyAlbumEdit(album, edit) : album,
+      );
+      if (edit.oldName !== edit.name) {
+        // Paths in cached media pages changed. Refresh them only when visited.
+        queryClient.invalidateQueries({ queryKey: ["album-media", props.drivePath], refetchType: "none" });
+        queryClient.invalidateQueries({ queryKey: ["mediaItem", props.drivePath], refetchType: "none" });
+      }
       modalRef?.close();
       setEditingAlbum(null);
     },
@@ -74,16 +110,22 @@ export function EditAlbumModal(props: EditAlbumModalProps) {
     e.preventDefault();
     const current = editingAlbum();
     if (!current) return;
-    const cleanName = name().trim();
+    const cleanName = name().trim().replace(/\\/g, "/");
     if (!cleanName) {
       setEditError("Album name cannot be empty.");
+      return;
+    }
+    const cleanDescription = description().trim() || null;
+    if (cleanName === current.name && cleanDescription === (current.description || null)) {
+      modalRef?.close();
       return;
     }
     setEditError(null);
     mutation.mutate({
       albumId: current.id,
+      oldName: current.name,
       name: cleanName,
-      description: description().trim() || undefined,
+      description: cleanDescription,
     });
   };
 
@@ -96,6 +138,7 @@ export function EditAlbumModal(props: EditAlbumModalProps) {
           <button
             type="button"
             onClick={() => modalRef?.close()}
+            disabled={mutation.isPending}
             class="btn btn-sm btn-ghost text-base-content/60 hover:text-base-content"
           >
             Cancel

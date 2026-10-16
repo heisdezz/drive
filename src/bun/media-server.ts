@@ -1,7 +1,9 @@
 import path from "node:path";
+import fs from "node:fs";
 import { addLog } from "./logger";
 import { getOrGenerateThumbnail } from "./thumbnails";
 import { normalizePath, getVideoMimeType } from "./windows";
+import { getDatabaseConnection, openReadableDb } from "./database";
 
 export const MEDIA_SERVER_PORT = 51789;
 
@@ -9,10 +11,47 @@ export const MEDIA_SERVER_PORT = 51789;
 // body drains quickly so it can't bleed into the next request's byte stream.
 const MAX_CHUNK_SIZE = 50 * 1024 * 1024;
 const IDLE_TIMEOUT = 60;
+let activeDrive: string | null = null;
 
-export function startMediaServer() {
+export function setActiveMediaDrive(drivePath: string | null) {
+  if (!drivePath) { activeDrive = null; return; }
+  const root = fs.realpathSync(drivePath);
+  if (!fs.existsSync(path.join(root, "albums", ".media_library.db"))) {
+    activeDrive = null;
+    return;
+  }
+  const dbPath = path.join(root, "albums", ".media_library.db");
+  try {
+    const db = getDatabaseConnection(dbPath);
+    db.close();
+  } catch (err: any) {
+    const db = openReadableDb(dbPath);
+    try { db.prepare("SELECT count(*) FROM media_items").get(); }
+    finally { db.close(); }
+    addLog("warn", `Library opened read-only; pending file recovery deferred: ${err.message}`, root);
+  }
+  activeDrive = root;
+}
+
+async function authorizedMedia(filePath: string, fileHash?: string): Promise<string | null> {
+  if (!activeDrive) return null;
+  let target: string;
+  try { target = await fs.promises.realpath(filePath); } catch { return null; }
+  const relative = path.relative(activeDrive, target);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  const db = openReadableDb(path.join(activeDrive, "albums", ".media_library.db"));
+  try {
+    const row = fileHash
+      ? db.prepare("SELECT id FROM media_items WHERE current_relative_path = ? AND file_hash = ?").get(relative, fileHash)
+      : db.prepare("SELECT id FROM media_items WHERE current_relative_path = ?").get(relative);
+    return row ? target : null;
+  } finally { db.close(); }
+}
+
+export function startMediaServer(port = MEDIA_SERVER_PORT) {
   const mediaServer = Bun.serve({
-    port: MEDIA_SERVER_PORT,
+    hostname: "127.0.0.1",
+    port,
     idleTimeout: IDLE_TIMEOUT,
     async fetch(req) {
       const corsHeaders = {
@@ -41,7 +80,8 @@ export function startMediaServer() {
           }
 
           try {
-            const normalizedPath = normalizePath(filePath);
+            const normalizedPath = await authorizedMedia(normalizePath(filePath));
+            if (!normalizedPath) return new Response("Forbidden media path", { status: 403, headers: corsHeaders });
             const file = Bun.file(normalizedPath);
             const total = file.size;
             const contentType =
@@ -150,13 +190,19 @@ export function startMediaServer() {
             );
           }
 
+          let requestedDrive: string | null = null;
+          try { requestedDrive = fs.realpathSync(drivePath); } catch {}
+          if (!activeDrive || requestedDrive !== activeDrive) {
+            return new Response("Forbidden drive", { status: 403, headers: corsHeaders });
+          }
           const thumbPath = path.join(
             drivePath,
             "albums",
             "thumbs",
             `${fileHash}.jpg`,
           );
-          const fullMediaPath = path.join(drivePath, relativePath);
+          const fullMediaPath = await authorizedMedia(path.join(drivePath, relativePath), fileHash);
+          if (!fullMediaPath) return new Response("Forbidden media path", { status: 403, headers: corsHeaders });
 
           try {
             const success = await getOrGenerateThumbnail(

@@ -1,7 +1,8 @@
 import { createSignal, Show } from "solid-js";
-import { Link } from "@tanstack/solid-router";
-import { Folder, Layers, Calendar, Edit2, Trash2 } from "lucide-solid";
+import { Link, useNavigate } from "@tanstack/solid-router";
+import { Folder, Layers, Calendar, Edit2, Trash2, FolderInput, ExternalLink } from "lucide-solid";
 import { useSettingsStore } from "@/store/settings_store";
+import { AppContextMenu } from "@/components/AppContextMenu";
 
 export interface Album {
   id: number;
@@ -61,10 +62,21 @@ interface AlbumCardProps {
   drivePath: string;
   onEdit?: (album: Album) => void;
   onDelete?: (album: Album) => void;
+  onMerge?: (album: Album) => void;
 }
 
 export function AlbumCard(props: AlbumCardProps) {
+  const navigate = useNavigate();
   return (
+    <AppContextMenu
+      label={`Actions for ${props.album.name === "unknown" ? "Unsorted Media" : props.album.name}`}
+      actions={[
+        { label: "Open album", icon: <ExternalLink class="h-4 w-4" />, onSelect: () => navigate({ to: "/album/$id", params: { id: String(props.album.id) } }) },
+        { label: "Edit album", icon: <Edit2 class="h-4 w-4" />, onSelect: () => props.onEdit?.(props.album), disabled: props.album.name === "unknown" || !props.onEdit, separatorBefore: true },
+        { label: "Merge into…", icon: <FolderInput class="h-4 w-4" />, onSelect: () => props.onMerge?.(props.album), disabled: props.album.name === "unknown" || !props.onMerge },
+        { label: "Delete album", icon: <Trash2 class="h-4 w-4" />, onSelect: () => props.onDelete?.(props.album), disabled: props.album.name === "unknown" || !props.onDelete, destructive: true, separatorBefore: true },
+      ]}
+      trigger={
     <Link
       to="/album/$id"
       params={{ id: String(props.album.id) }}
@@ -131,5 +143,7 @@ export function AlbumCard(props: AlbumCardProps) {
         </div>
       </div>
     </Link>
+      }
+    />
   );
 }

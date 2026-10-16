@@ -1,4 +1,4 @@
-import { createMemo, Show, For } from "solid-js";
+import { createMemo, createSignal, Show, For } from "solid-js";
 import {
   createFileRoute,
   useNavigate,
@@ -6,6 +6,7 @@ import {
   useSearch,
 } from "@tanstack/solid-router";
 import { useDriveStore } from "@/store/drive_store";
+import { useSettingsStore } from "@/store/settings_store";
 import { rpc } from "@/lib/rpc";
 import { MediaCard, type MediaItem } from "@/components/MediaCard";
 import { Pagination } from "@/components/Pagination";
@@ -60,11 +61,31 @@ export const Route = createFileRoute("/album/$id/")({
 
 function AlbumDetailComponent() {
   const drive = useDriveStore();
+  const settings = useSettingsStore();
   const params = useParams({ from: Route.id });
   const search = useSearch({ from: Route.id });
   const navigate = useNavigate({ from: Route.id });
   const queryClient = useQueryClient();
   const selection = useSelectionStore();
+  const [validating, setValidating] = createSignal(false);
+  const [validationMessage, setValidationMessage] = createSignal("");
+
+  const validateFiles = async () => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath) return;
+    setValidating(true);
+    try {
+      const result = await rpc.request.validateAlbumFiles({ drivePath, albumId: albumId() });
+      if (!result.success) throw new Error(result.error || "Validation failed");
+      setValidationMessage(`Checked ${result.checked} files; removed ${result.removed} missing entries.`);
+      await queryClient.invalidateQueries({ queryKey: ["album-media", drivePath, albumId()] });
+      await queryClient.invalidateQueries({ queryKey: ["albums", drivePath] });
+    } catch (err: any) {
+      setValidationMessage(err.message || "Validation failed");
+    } finally {
+      setValidating(false);
+    }
+  };
 
   const albumId = () => Number(params().id);
 
@@ -286,7 +307,7 @@ function AlbumDetailComponent() {
         <Show
           when={!error()}
           fallback={
-            <div class="space-y-6 max-w-5xl">
+            <div class="space-y-6 max-w-[1600px]">
               <div class="flex items-center gap-2">
                 <button
                   onClick={() =>
@@ -309,7 +330,7 @@ function AlbumDetailComponent() {
             </div>
           }
         >
-          <div class="space-y-6 max-w-5xl">
+          <div class="space-y-6 max-w-[1600px]">
             {/* Back */}
             <div class="flex items-center gap-2">
               <button
@@ -343,6 +364,9 @@ function AlbumDetailComponent() {
               </div>
 
               <div class="flex items-center gap-3 ml-auto md:ml-0">
+                <button onClick={validateFiles} disabled={validating()} class="btn btn-sm btn-outline gap-1.5">
+                  <RotateCw class={`w-3.5 h-3.5 ${validating() ? "animate-spin" : ""}`} /> Validate Files
+                </button>
                 <Show when={album()}>
                   <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-base-300 text-[10px] text-base-content/60 font-mono">
                     <Calendar class="w-3.5 h-3.5 text-base-content/40" />
@@ -385,6 +409,8 @@ function AlbumDetailComponent() {
                 </button>
               </div>
             </div>
+
+            <Show when={validationMessage()}><p role="status" class="text-xs text-base-content/70">{validationMessage()}</p></Show>
 
             {/* Filter, Search & Sort Bar */}
             <div class="border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -511,7 +537,8 @@ function AlbumDetailComponent() {
                 }
               >
                 <div
-                  class={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 ${selection.isSelecting ? "is-selecting" : ""}`}
+                  class={`catalog-grid catalog-grid--media ${selection.isSelecting ? "is-selecting" : ""}`}
+                  style={{ "--catalog-columns": settings.columns }}
                 >
                   <For each={mediaItems()}>
                     {(item) => (

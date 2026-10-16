@@ -170,7 +170,10 @@ export async function getOrGenerateThumbnail(fullMediaPath: string, thumbPath: s
 	if (!promise) {
 		promise = limiter.run(() => generateThumbnailFile(fullMediaPath, thumbPath));
 		activeGenerations.set(thumbPath, promise);
-		promise.finally(() => activeGenerations.delete(thumbPath));
+		void promise.then(
+			() => activeGenerations.delete(thumbPath),
+			() => activeGenerations.delete(thumbPath),
+		);
 	}
 	return promise;
 }
@@ -184,27 +187,32 @@ interface ThumbnailQueueItem {
 
 class ThumbnailQueue {
 	private queue: ThumbnailQueueItem[] = [];
+	private queued = new Set<string>();
+	private active = 0;
+	private readonly workers = 2;
 
 	public add(fullMediaPath: string, thumbPath: string) {
 		// Skip if already queued or already on disk.
-		if (this.queue.some((item) => item.thumbPath === thumbPath)) return;
+		if (this.queued.has(thumbPath)) return;
 		// Sync check here is fine — called once per file during scan, not on
 		// every request. The on-demand path uses async access instead.
 		if (fs.existsSync(thumbPath)) return;
+		this.queued.add(thumbPath);
 		this.queue.push({ fullMediaPath, thumbPath });
-		this.processNext();
+		this.pump();
 	}
 
-	private async processNext() {
-		const item = this.queue.shift();
-		if (!item) return;
-
-		try {
-			await limiter.run(() => generateThumbnailFile(item.fullMediaPath, item.thumbPath));
-		} catch (err: any) {
-			addLog("error", `Background thumbnail generation failed: ${err.message}`);
-		} finally {
-			setImmediate(() => this.processNext());
+	private pump() {
+		while (this.active < this.workers && this.queue.length) {
+			const item = this.queue.shift()!;
+			this.active++;
+			void getOrGenerateThumbnail(item.fullMediaPath, item.thumbPath)
+				.catch((err: any) => addLog("error", `Background thumbnail generation failed: ${err.message}`))
+				.finally(() => {
+					this.queued.delete(item.thumbPath);
+					this.active--;
+					this.pump();
+				});
 		}
 	}
 }

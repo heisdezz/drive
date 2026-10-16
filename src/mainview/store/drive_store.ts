@@ -15,6 +15,13 @@ const [selectedDrive, setSelectedDrive] = createSignal<Device | null>(null);
 const [devices, setDevices] = createSignal<Device[]>([]);
 const [loading, setLoading] = createSignal<boolean>(false);
 
+function selectDrive(device: Device | null) {
+  void rpc.request.setActiveMediaDrive({ drivePath: device?.path ?? null }).catch((err) => {
+    console.error("Failed to set active media drive:", err);
+  });
+  setSelectedDrive(device);
+}
+
 async function fetchDrives() {
   setLoading(true);
   try {
@@ -32,7 +39,7 @@ async function fetchDrives() {
           updated.size !== current.size ||
           updated.name !== current.name)
       ) {
-        setSelectedDrive(updated);
+        selectDrive(updated);
       }
     }
   } catch (err) {
@@ -52,7 +59,7 @@ const state = {
   get loading() {
     return loading();
   },
-  selectDrive: setSelectedDrive,
+  selectDrive,
   fetchDrives,
 };
 
@@ -67,7 +74,7 @@ useDriveStore.getState = () => state;
 
 export {
   selectedDrive,
-  setSelectedDrive,
+  selectDrive as setSelectedDrive,
   devices,
   setDevices,
   loading as drivesLoading,

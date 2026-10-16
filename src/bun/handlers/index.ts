@@ -5,6 +5,7 @@ import { mediaHandlers } from "./media";
 import { albumHandlers } from "./albums";
 import { backupHandlers } from "./backup";
 import { miscHandlers } from "./misc";
+import { mobileSyncHandlers } from "./mobile-sync";
 
 // Exhaustive map of every RPC request handler, assembled from the per-domain
 // groups. Typed as RpcHandlers so a missing or mistyped handler is a compile
@@ -16,4 +17,5 @@ export const requestHandlers: RpcHandlers = {
 	...albumHandlers,
 	...backupHandlers,
 	...miscHandlers,
+	...mobileSyncHandlers,
 };

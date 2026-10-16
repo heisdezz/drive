@@ -6,3 +6,38 @@
 html {
   /*scroll-behavior: smooth;*/
 }
+
+.catalog-grid {
+  --catalog-columns: 4;
+  display: grid;
+  gap: var(--catalog-gap);
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(
+      min(
+        100%,
+        max(
+          var(--catalog-min-width),
+          calc(
+            (100% - (var(--catalog-columns) - 1) * var(--catalog-gap) - 1px) /
+              var(--catalog-columns)
+          )
+        )
+      ),
+      1fr
+    )
+  );
+}
+
+.catalog-grid--albums {
+  --catalog-gap: 1.5rem;
+  --catalog-min-width: 150px;
+}
+
+.catalog-grid--media {
+  --catalog-gap: 1rem;
+  --catalog-min-width: 112px;
+}
+@utility fade {
+  @apply border-current/20 ring-current/20;
+}

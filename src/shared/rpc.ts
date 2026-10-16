@@ -15,6 +15,10 @@ export interface MainRPC extends ElectrobunRPCSchema {
 					path: string;
 				}[];
 			};
+			setActiveMediaDrive: {
+				params: { drivePath: string | null };
+				response: { success: boolean; error?: string };
+			};
 			mountDrive: {
 				params: undefined;
 				response: {
@@ -193,6 +197,7 @@ export interface MainRPC extends ElectrobunRPCSchema {
 						relative_path: string;
 						description: string | null;
 						created_at: string;
+						media_count: number;
 					};
 					error?: string;
 				};
@@ -239,6 +244,7 @@ export interface MainRPC extends ElectrobunRPCSchema {
 						relative_path: string;
 						description: string | null;
 						created_at: string;
+						media_count: number;
 					};
 					error?: string;
 				};
@@ -264,6 +270,26 @@ export interface MainRPC extends ElectrobunRPCSchema {
 					success: boolean;
 					error?: string;
 				};
+			};
+			mergeAlbums: {
+				params: { drivePath: string; sourceAlbumId: number; targetAlbumId: number };
+				response: { success: boolean; movedCount: number; error?: string };
+			};
+			validateAlbumFiles: {
+				params: { drivePath: string; albumId?: number };
+				response: { success: boolean; checked: number; removed: number; error?: string };
+			};
+			startMobileSync: {
+				params: { drivePath: string; port: number };
+				response: { success: boolean; running: boolean; drivePath: string; port: number; url: string; error?: string };
+			};
+			stopMobileSync: {
+				params: undefined;
+				response: { running: boolean; drivePath: string; port: number; url: string };
+			};
+			getMobileSyncStatus: {
+				params: undefined;
+				response: { running: boolean; drivePath: string; port: number; url: string };
 			};
 			deleteMediaItems: {
 				params: {

@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { addLog } from "../logger";
-import { assertWritable, getDatabaseConnection, openReadableDb } from "../database";
-import { moveFile } from "../file-ops";
+import { assertWritable, getDatabaseConnection, hasMediaSearchIndex, openReadableDb } from "../database";
+import { MoveBatch, newDeletionBatch } from "../file-ops";
 import { getOrGenerateThumbnail } from "../thumbnails";
 import { MEDIA_SERVER_PORT } from "../media-server";
 import type { RpcHandlers } from "./types";
@@ -36,8 +36,13 @@ export const mediaHandlers: Pick<
 			const params: any[] = [];
 
 			if (search) {
-				sql += " AND (m.original_relative_path LIKE ? OR m.current_relative_path LIKE ?)";
-				countSql += " AND (original_relative_path LIKE ? OR current_relative_path LIKE ?)";
+				const indexed = search.length >= 3 && hasMediaSearchIndex(db);
+				sql += indexed
+					? " AND m.id IN (SELECT rowid FROM media_search WHERE original_relative_path LIKE ? OR current_relative_path LIKE ?)"
+					: " AND (m.original_relative_path LIKE ? OR m.current_relative_path LIKE ?)";
+				countSql += indexed
+					? " AND id IN (SELECT rowid FROM media_search WHERE original_relative_path LIKE ? OR current_relative_path LIKE ?)"
+					: " AND (original_relative_path LIKE ? OR current_relative_path LIKE ?)";
 				const term = `%${search}%`;
 				params.push(term, term);
 			}
@@ -252,6 +257,7 @@ export const mediaHandlers: Pick<
 			const updateAlbumAndPath = db.prepare("UPDATE media_items SET album_id = ?, current_relative_path = ? WHERE id = ?");
 
 			let movedCount = 0;
+			const movedFiles = new MoveBatch(drivePath);
 
 			db.run("BEGIN TRANSACTION;");
 			try {
@@ -263,9 +269,6 @@ export const mediaHandlers: Pick<
 					const currentFullPath = path.join(drivePath, item.current_relative_path);
 					if (!fs.existsSync(currentFullPath)) {
 						addLog("warn", `File does not exist at current path, skipping physical move: ${currentFullPath}`);
-						// Update DB anyway to keep it consistent
-						updateAlbumOnly.run(targetAlbumId, id);
-						movedCount++;
 						continue;
 					}
 
@@ -292,22 +295,20 @@ export const mediaHandlers: Pick<
 						continue;
 					}
 
-					try {
-						// Move physical file (with fallback)
-						await moveFile(currentFullPath, targetFullPath);
-						const newRelativePath = path.relative(drivePath, targetFullPath);
+					// Keep every physical move available for rollback until commit.
+					await movedFiles.move(currentFullPath, targetFullPath, id);
+					const newRelativePath = path.relative(drivePath, targetFullPath);
 
 						// Update database
-						updateAlbumAndPath.run(targetAlbumId, newRelativePath, id);
+					updateAlbumAndPath.run(targetAlbumId, newRelativePath, id);
 
-						movedCount++;
-					} catch (moveErr: any) {
-						addLog("error", `Failed to move physical file ${currentFullPath} to ${targetFullPath}: ${moveErr.message}`);
-					}
+					movedCount++;
 				}
 				db.run("COMMIT;");
+				movedFiles.finish();
 			} catch (loopErr) {
 				db.run("ROLLBACK;");
+				await movedFiles.rollback();
 				throw loopErr;
 			}
 
@@ -337,24 +338,23 @@ export const mediaHandlers: Pick<
 			const deleteItem = db.prepare("DELETE FROM media_items WHERE id = ?");
 
 			let deletedCount = 0;
+			const batchDir = newDeletionBatch(drivePath);
+			const staged = new MoveBatch();
+			const thumbnails: string[] = [];
 			db.run("BEGIN TRANSACTION;");
 			try {
 				for (const id of mediaIds) {
 					const item = selectItem.get(id) as { current_relative_path: string; file_hash: string } | undefined;
 					if (!item) continue;
 
-					// 1. Physically delete the media file
+					// Stage the media file. A crash before commit can restore it.
 					const fullPath = path.join(drivePath, item.current_relative_path);
 					if (fs.existsSync(fullPath)) {
-						await fs.promises.unlink(fullPath);
+						await staged.move(fullPath, path.join(batchDir, String(id)));
 					}
 
-					// 2. Physically delete the cached thumbnail file. Thumbnails are
-					// generated into albums/thumbs/<hash>.jpg, so delete from there.
 					const thumbPath = path.join(drivePath, "albums", "thumbs", `${item.file_hash}.jpg`);
-					if (fs.existsSync(thumbPath)) {
-						await fs.promises.unlink(thumbPath).catch(() => {});
-					}
+					thumbnails.push(thumbPath);
 
 					// 3. Delete from database
 					deleteItem.run(id);
@@ -363,7 +363,15 @@ export const mediaHandlers: Pick<
 				db.run("COMMIT;");
 			} catch (transactionErr) {
 				db.run("ROLLBACK;");
+				await staged.rollback();
+				await fs.promises.rm(batchDir, { recursive: true, force: true });
 				throw transactionErr;
+			}
+			try {
+				await fs.promises.rm(batchDir, { recursive: true, force: true });
+				for (const thumbPath of thumbnails) await fs.promises.unlink(thumbPath).catch(() => {});
+			} catch (cleanupErr: any) {
+				addLog("warn", `Could not clear staged deleted files: ${cleanupErr.message}`, batchDir);
 			}
 
 			addLog("info", `Successfully deleted ${deletedCount} media items physically and from database`);

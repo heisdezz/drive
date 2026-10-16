@@ -38,8 +38,8 @@ export default function DialogModal(props: ModalProps) {
 
   return (
     <dialog ref={modalRef} class="modal modal-middle">
-      <div class="modal-box bg-slate-950 border border-slate-900 text-white max-w-lg flex flex-col max-h-[90vh] rounded-2xl shadow-2xl relative p-0 overflow-hidden">
-        <div class="flex border-b border-slate-900 py-4 items-center px-6">
+      <div class="modal-box bg-base-100 fade border border text-white max-w-lg flex flex-col max-h-[90vh] rounded-2xl shadow-2xl relative p-0 overflow-hidden">
+        <div class="flex border-b fade py-4 items-center px-6">
           <Show when={props.title}>
             <h3 class="font-bold text-lg text-white">{props.title}</h3>
           </Show>
@@ -57,7 +57,7 @@ export default function DialogModal(props: ModalProps) {
           <div class="p-6 overflow-y-auto text-sm">{props.children}</div>
         </Show>
         <Show when={props.actions}>
-          <div class="flex justify-end gap-2 p-4 bg-slate-950 border-t border-slate-900 sticky bottom-0">
+          <div class="flex justify-end gap-2 p-4 bg-base-100 border-t border fade sticky bottom-0">
             {props.actions}
           </div>
         </Show>

@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { addLog } from "./logger";
+import { recoverPendingAlbumRenames, recoverPendingDeletions, recoverPendingMediaMoves, recoverPendingScanMoves } from "./file-ops";
+
+const recoveredDrives = new Set<string>();
 
 // SQLite Database structure initialization
 export function initializeDatabase(db: Database) {
@@ -26,6 +29,7 @@ export function initializeDatabase(db: Database) {
 			name TEXT UNIQUE NOT NULL,
 			relative_path TEXT UNIQUE NOT NULL,
 			description TEXT,
+			media_count INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	`);
@@ -54,6 +58,31 @@ export function initializeDatabase(db: Database) {
 	db.run("CREATE INDEX IF NOT EXISTS idx_media_album_created ON media_items(album_id, created_at);");
 	db.run("CREATE INDEX IF NOT EXISTS idx_media_created ON media_items(created_at);");
 	db.run("CREATE INDEX IF NOT EXISTS idx_media_mime ON media_items(mime_type);");
+	db.run("CREATE INDEX IF NOT EXISTS idx_media_name ON media_items(original_relative_path, id);");
+	db.run("CREATE INDEX IF NOT EXISTS idx_media_size ON media_items(file_size, id);");
+
+	// Trigram FTS accelerates the existing substring search. External content
+	// keeps one source of truth in media_items; triggers maintain the index.
+	db.run("CREATE VIRTUAL TABLE IF NOT EXISTS media_search USING fts5(original_relative_path, current_relative_path, content='media_items', content_rowid='id', tokenize=trigram);");
+	db.run(`CREATE TRIGGER IF NOT EXISTS media_search_insert AFTER INSERT ON media_items BEGIN
+		INSERT INTO media_search(rowid, original_relative_path, current_relative_path)
+		VALUES (new.id, new.original_relative_path, new.current_relative_path);
+	END;`);
+	db.run(`CREATE TRIGGER IF NOT EXISTS media_search_delete AFTER DELETE ON media_items BEGIN
+		INSERT INTO media_search(media_search, rowid, original_relative_path, current_relative_path)
+		VALUES ('delete', old.id, old.original_relative_path, old.current_relative_path);
+	END;`);
+	db.run(`CREATE TRIGGER IF NOT EXISTS media_search_update AFTER UPDATE OF original_relative_path, current_relative_path ON media_items BEGIN
+		INSERT INTO media_search(media_search, rowid, original_relative_path, current_relative_path)
+		VALUES ('delete', old.id, old.original_relative_path, old.current_relative_path);
+		INSERT INTO media_search(rowid, original_relative_path, current_relative_path)
+		VALUES (new.id, new.original_relative_path, new.current_relative_path);
+	END;`);
+	const version = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+	if (version < 1) {
+		db.run("INSERT INTO media_search(media_search) VALUES ('rebuild');");
+		db.run("PRAGMA user_version = 1;");
+	}
 
 	// Ensure the default "unknown" album always exists in the database
 	db.run(`
@@ -66,6 +95,42 @@ export function initializeDatabase(db: Database) {
 	if (unknownAlbum) {
 		db.prepare("UPDATE media_items SET album_id = ? WHERE album_id IS NULL").run(unknownAlbum.id);
 	}
+
+	// Version 2 stores album counts. Backfill existing libraries once, then
+	// maintain counts in the same transaction as each media change.
+	if (version < 2) {
+		const migrateCounts = db.transaction(() => {
+			const columns = db.prepare("PRAGMA table_info(albums)").all() as { name: string }[];
+			if (!columns.some(column => column.name === "media_count")) {
+				db.run("ALTER TABLE albums ADD COLUMN media_count INTEGER NOT NULL DEFAULT 0;");
+			}
+			db.run(`CREATE TRIGGER IF NOT EXISTS album_count_insert AFTER INSERT ON media_items
+			WHEN new.album_id IS NOT NULL BEGIN
+				UPDATE albums SET media_count = media_count + 1 WHERE id = new.album_id;
+			END;`);
+			db.run(`CREATE TRIGGER IF NOT EXISTS album_count_delete AFTER DELETE ON media_items
+			WHEN old.album_id IS NOT NULL BEGIN
+				UPDATE albums SET media_count = media_count - 1 WHERE id = old.album_id;
+			END;`);
+			db.run(`CREATE TRIGGER IF NOT EXISTS album_count_move AFTER UPDATE OF album_id ON media_items
+			WHEN old.album_id IS NOT new.album_id BEGIN
+				UPDATE albums SET media_count = media_count - 1 WHERE id = old.album_id;
+				UPDATE albums SET media_count = media_count + 1 WHERE id = new.album_id;
+			END;`);
+			db.run(`UPDATE albums SET media_count =
+			(SELECT count(*) FROM media_items WHERE album_id = albums.id);`);
+			db.run("PRAGMA user_version = 2;");
+		});
+		migrateCounts();
+	}
+}
+
+export function hasAlbumMediaCounts(db: Database): boolean {
+	return !!db.prepare("SELECT 1 FROM pragma_table_info('albums') WHERE name = 'media_count'").get();
+}
+
+export function hasMediaSearchIndex(db: Database): boolean {
+	return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'media_search'").get();
 }
 
 // Open the library DB with settings safe for the removable (typically exFAT)
@@ -177,6 +242,14 @@ export function getDatabaseConnection(dbPath: string): Database {
 	try {
 		db = openLibraryDb(dbPath);
 		initializeDatabase(db);
+		const drivePath = path.dirname(path.dirname(dbPath));
+		if (!recoveredDrives.has(drivePath)) {
+			recoverPendingDeletions(db, drivePath);
+			recoverPendingMediaMoves(db, drivePath);
+			recoverPendingAlbumRenames(db, drivePath);
+			recoverPendingScanMoves(db, drivePath);
+			recoveredDrives.add(drivePath);
+		}
 		// Touch actual data pages (not just the schema page) so on-disk
 		// corruption is detected here and can trigger recovery, rather than
 		// surfacing later inside a specific query like getMediaItems.

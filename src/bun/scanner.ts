@@ -3,7 +3,7 @@ import path from "node:path";
 import { readdir } from "node:fs/promises";
 import { Database } from "bun:sqlite";
 import { addLog } from "./logger";
-import { moveFile } from "./file-ops";
+import { moveScannedFile } from "./file-ops";
 import { backgroundThumbnailQueue } from "./thumbnails";
 
 export interface ScanState {
@@ -15,28 +15,30 @@ export interface ScanState {
 
 export const activeScans = new Map<string, ScanState>();
 
-function isIgnored(fileName: string, relativePath: string, ignoreList: string[] = []): boolean {
+export function isIgnored(fileName: string, relativePath: string, ignoreList: string[] = []): boolean {
 	if (
 		fileName === "albums" ||
 		fileName.startsWith(".") ||
 		fileName === "node_modules" ||
-		fileName === "lost+found"
+		fileName === "lost+found" ||
+		fileName === "System Volume Information" ||
+		fileName === "$RECYCLE.BIN"
 	) {
 		return true;
 	}
 
 	if (!ignoreList || ignoreList.length === 0) return false;
 
-	const normFile = fileName.toLowerCase().trim();
 	const normRel = relativePath.replace(/\\/g, "/").toLowerCase().trim();
 	const relSegments = normRel.split("/");
 
 	for (const rawPattern of ignoreList) {
 		const pattern = rawPattern.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase().trim();
 		if (!pattern) continue;
-		if (normFile === pattern) return true;
-		if (relSegments.includes(pattern)) return true;
-		if (normRel === pattern || normRel.startsWith(pattern + "/")) return true;
+		const patternSegments = pattern.split("/");
+		for (let i = 0; i <= relSegments.length - patternSegments.length; i++) {
+			if (patternSegments.every((segment, j) => segment === relSegments[i + j])) return true;
+		}
 	}
 
 	return false;
@@ -67,14 +69,17 @@ export async function walkDirectory(
 	) => {
 		insertAlbum.run(albumName, `albums/${albumName}`);
 		const album = selectAlbum.get(albumName) as { id: number } | undefined;
-		insertMedia.run(fileHash, relativePath, currentRelativePath, fileSize, mimeType, album?.id ?? null);
+		const result = insertMedia.run(fileHash, relativePath, currentRelativePath, fileSize, mimeType, album?.id ?? null);
+		if (result.changes === 0) throw new Error(`Media record already exists for ${relativePath}`);
 	});
 
 	const dirStack: string[] = [startDir];
+	const visitedDirs: string[] = [];
 
 	while (dirStack.length > 0) {
 		if (!scanState.scanning) return;
 		const currentDir = dirStack.pop()!;
+		visitedDirs.push(currentDir);
 
 		try {
 			const files = await readdir(currentDir, { withFileTypes: true });
@@ -112,8 +117,8 @@ export async function walkDirectory(
 							const fileHash = `${file.name}_${fileStats.size}_${fileStats.mtimeMs}`;
 							const mimeType = isImage ? `image/${ext.slice(1)}` : `video/${ext.slice(1)}`;
 
-							const parentDir = path.dirname(fullPath);
-							const albumName = parentDir === drivePath ? "unknown" : path.basename(parentDir);
+						const sourceDir = path.relative(drivePath, currentDir).replace(/\\/g, "/");
+						const albumName = sourceDir === "" || sourceDir === "." || sourceDir === "unknown" ? "unknown" : sourceDir;
 							const destDir = path.join(drivePath, "albums", albumName);
 
 							await fs.promises.mkdir(destDir, { recursive: true });
@@ -131,10 +136,9 @@ export async function walkDirectory(
 							if (!scanState.scanning) return;
 
 							try {
-								await moveFile(fullPath, targetFullPath);
 								const currentRelativePath = path.relative(drivePath, targetFullPath);
-
-								recordFile(fileHash, relativePath, currentRelativePath, fileStats.size, mimeType, albumName);
+								await moveScannedFile(drivePath, fullPath, targetFullPath, () =>
+									recordFile(fileHash, relativePath, currentRelativePath, fileStats.size, mimeType, albumName));
 
 								scanState.foundCount++;
 								addLog("info", `Moved media file during scan`, `original: ${relativePath} -> current: ${currentRelativePath}`);
@@ -154,6 +158,19 @@ export async function walkDirectory(
 			}
 		} catch (err: any) {
 			addLog("error", `Error walking directory ${currentDir}: ${err.message}`, err.stack);
+		}
+	}
+
+	if (scanState.scanning) {
+		for (const dir of visitedDirs.sort((a, b) => b.length - a.length)) {
+			if (dir === drivePath || dir === startDir) continue;
+			try {
+				await fs.promises.rmdir(dir);
+			} catch (err: any) {
+				if (err.code !== "ENOTEMPTY" && err.code !== "EEXIST" && err.code !== "ENOENT") {
+					addLog("warn", `Could not remove empty source directory: ${dir}`, err.message);
+				}
+			}
 		}
 	}
 }

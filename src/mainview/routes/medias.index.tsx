@@ -5,6 +5,7 @@ import {
 } from "@tanstack/solid-router";
 import { createSignal, createMemo, Show, For } from "solid-js";
 import { useDriveStore } from "@/store/drive_store";
+import { useSettingsStore } from "@/store/settings_store";
 import { rpc } from "@/lib/rpc";
 import {
   Compass,
@@ -46,6 +47,7 @@ export const Route = createFileRoute("/medias/")({
 
 function MediasComponent() {
   const drive = useDriveStore();
+  const settings = useSettingsStore();
   const search = useSearch({ from: Route.id });
   const navigate = useNavigate({ from: Route.id });
   const selection = useSelectionStore();
@@ -249,7 +251,7 @@ function MediasComponent() {
           </div>
         }
       >
-        <div class="space-y-6 max-w-5xl">
+        <div class="space-y-6 max-w-[1600px]">
           {/* Drive Header */}
           <div class="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div class="flex items-center gap-4">
@@ -356,7 +358,8 @@ function MediasComponent() {
               }
             >
               <div
-                class={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 ${selection.isSelecting ? "is-selecting" : ""}`}
+                class={`catalog-grid catalog-grid--media ${selection.isSelecting ? "is-selecting" : ""}`}
+                style={{ "--catalog-columns": settings.columns }}
               >
                 <For each={catalog.mediaItems}>
                   {(item) => (

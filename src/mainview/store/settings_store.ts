@@ -10,6 +10,11 @@ const DEFAULT_IGNORE_LIST = [
 
 const STORAGE_KEY = "media-organizer-settings";
 
+function normalizeColumns(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 4;
+  return Math.min(9, Math.max(4, Math.trunc(value)));
+}
+
 function loadInitialSettings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -18,7 +23,7 @@ function loadInitialSettings() {
       const state = parsed.state || parsed;
       return {
         items_per_page: state.items_per_page ?? 24,
-        columns: state.columns ?? 4,
+        columns: normalizeColumns(state.columns),
         show_thumbnails: state.show_thumbnails ?? true,
         gdrive_service_account_json: state.gdrive_service_account_json ?? "",
         gdrive_folder_id: state.gdrive_folder_id ?? "",
@@ -80,7 +85,7 @@ function setItemsPerPage(items: number) {
 }
 
 function setColumns(cols: number) {
-  setColumnsSignal(Math.min(9, Math.max(4, cols)));
+  setColumnsSignal(normalizeColumns(cols));
   saveSettings();
 }
 

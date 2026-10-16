@@ -2,12 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { addLog, appLogs } from "../logger";
 import { setThumbnailsPaused } from "../thumbnails";
+import { setActiveMediaDrive } from "../media-server";
 import type { RpcHandlers } from "./types";
 
 export const miscHandlers: Pick<
 	RpcHandlers,
-	"openExternal" | "selectFolder" | "setThumbnailGenerationPaused" | "getLogs"
+	"openExternal" | "selectFolder" | "setThumbnailGenerationPaused" | "getLogs" | "setActiveMediaDrive"
 > = {
+	setActiveMediaDrive: async ({ drivePath }) => {
+		try { setActiveMediaDrive(drivePath); return { success: true }; }
+		catch (err: any) { return { success: false, error: err.message }; }
+	},
 	selectFolder: async ({ defaultPath, title = "Select Directory" }) => {
 		addLog("info", `RPC Request: selectFolder invoked`, `defaultPath: ${defaultPath || "none"}`);
 		try {

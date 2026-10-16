@@ -12,6 +12,9 @@ import {
 import { activeScans, walkDirectory } from "../scanner";
 import type { RpcHandlers } from "./types";
 
+const scanJobs = new Map<string, Promise<void>>();
+const scanStarts = new Map<string, Promise<void>>();
+
 export const scanHandlers: Pick<
 	RpcHandlers,
 	"scaffoldLibrary" | "startScan" | "stopScan" | "getScanStatus"
@@ -63,11 +66,23 @@ export const scanHandlers: Pick<
 	},
 	startScan: async ({ drivePath, folderPath, ignoreList }) => {
 		addLog("info", `RPC Request: startScan invoked`, `drivePath: ${drivePath}, folderPath: ${folderPath}, ignoreList: ${ignoreList?.join(", ") || "none"}`);
+		const previousStart = scanStarts.get(drivePath);
+		let releaseStart!: () => void;
+		const startGate = new Promise<void>(resolve => { releaseStart = resolve; });
+		scanStarts.set(drivePath, startGate);
+		if (previousStart) await previousStart;
 		try {
 			const dbPath = path.join(drivePath, "albums", ".media_library.db");
 			if (!fs.existsSync(dbPath)) {
 				addLog("warn", "Database not scaffolded, cannot start scan", drivePath);
 				return { success: false, error: "Database not scaffolded yet. Please scaffold library first." };
+			}
+
+			const previousJob = scanJobs.get(drivePath);
+			if (previousJob) {
+				const previousState = activeScans.get(drivePath);
+				if (previousState) previousState.scanning = false;
+				await previousJob;
 			}
 
 			// Snapshot the current catalog before the scan's write burst, so
@@ -83,15 +98,7 @@ export const scanHandlers: Pick<
 			// journal mode safe for exFAT/removable drives (never WAL).
 			const db = getDatabaseConnection(dbPath);
 
-			// Stop any active scan on this drive
-			let state = activeScans.get(drivePath);
-			if (state && state.scanning) {
-				addLog("info", "Aborting active scan on drive to start a new scan session", drivePath);
-				state.scanning = false;
-				await new Promise((resolve) => setTimeout(resolve, 300));
-			}
-
-			state = {
+			const state = {
 				scanning: true,
 				scannedCount: 0,
 				foundCount: 0,
@@ -100,23 +107,28 @@ export const scanHandlers: Pick<
 			activeScans.set(drivePath, state);
 
 			// Async scan start
-			(async () => {
+			const job = (async () => {
 				try {
 					addLog("info", "Media scanner thread started", folderPath);
-					await walkDirectory(drivePath, folderPath, db, state!, ignoreList);
+					await walkDirectory(drivePath, folderPath, db, state, ignoreList);
 				} catch (err: any) {
 					addLog("error", `Scanning process encountered error: ${err.message}`, err.stack);
 				} finally {
-					state!.scanning = false;
+					state.scanning = false;
 					db.close();
-					addLog("info", `Scan thread closed. Total checked: ${state!.scannedCount}, media found: ${state!.foundCount}`, drivePath);
+					scanJobs.delete(drivePath);
+					addLog("info", `Scan thread closed. Total checked: ${state.scannedCount}, media found: ${state.foundCount}`, drivePath);
 				}
 			})();
+			scanJobs.set(drivePath, job);
 
 			return { success: true };
 		} catch (err: any) {
 			addLog("error", `Failed to initiate scan at ${folderPath}: ${err.message}`, err.stack);
 			return { success: false, error: err.message };
+		} finally {
+			releaseStart();
+			if (scanStarts.get(drivePath) === startGate) scanStarts.delete(drivePath);
 		}
 	},
 	stopScan: async ({ drivePath }) => {
@@ -126,6 +138,7 @@ export const scanHandlers: Pick<
 			state.scanning = false;
 			addLog("info", `Scan stopped by user request`, drivePath);
 		}
+		await scanJobs.get(drivePath);
 		return { success: true };
 	},
 	getScanStatus: async ({ drivePath }) => {

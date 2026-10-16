@@ -1,61 +1,37 @@
-# React + Tailwind + Vite Electrobun Template
+# D-Stream Desktop
 
-A fast Electrobun desktop app template with React, Tailwind CSS, and Vite for hot module replacement (HMR).
+D-Stream Desktop is a Solid and Electrobun media library for removable drives.
 
-## Getting Started
+## Run locally
 
 ```bash
-# Install dependencies
 bun install
-
-# Development without HMR (uses bundled assets)
 bun run dev
-
-# Development with HMR (recommended)
-bun run dev:hmr
-
-# Build for production
-bun run build
-
-# Build for production release
-bun run build:prod
 ```
 
-## How HMR Works
+For frontend hot reload, use `bun run dev:hmr`.
 
-When you run `bun run dev:hmr`:
+## Build a release
 
-1. **Vite dev server** starts on `http://localhost:5173` with HMR enabled
-2. **Electrobun** starts and detects the running Vite server
-3. The app loads from the Vite dev server instead of bundled assets
-4. Changes to React components update instantly without full page reload
-
-When you run `bun run dev` (without HMR):
-
-1. Electrobun starts and loads from `views://mainview/index.html`
-2. You need to rebuild (`bun run build`) to see changes
-
-## Project Structure
-
-```
-├── src/
-│   ├── bun/
-│   │   └── index.ts        # Main process (Electrobun/Bun)
-│   └── mainview/
-│       ├── App.tsx         # React app component
-│       ├── main.tsx        # React entry point
-│       ├── index.html      # HTML template
-│       └── index.css       # Tailwind CSS
-├── electrobun.config.ts    # Electrobun configuration
-├── vite.config.ts          # Vite configuration
-├── tailwind.config.js      # Tailwind configuration
-└── package.json
+```bash
+bun run build:stable
 ```
 
-## Customizing
+The installer to share is printed at the end of the build and copied to
+`release/stable/`. For a canary build, run `bun run build:canary` and find its
+installer in `release/canary/`.
 
-- **React components**: Edit files in `src/mainview/`
-- **Tailwind theme**: Edit `tailwind.config.js`
-- **Vite settings**: Edit `vite.config.ts`
-- **Window settings**: Edit `src/bun/index.ts`
-- **App metadata**: Edit `electrobun.config.ts`
+On Linux, the release file is a `.tar.gz` archive. Extract it and run the
+`installer` inside. On Windows, extract the release `.zip` and run the setup
+program. On macOS, open the release `.dmg`.
+
+| Directory | Purpose |
+| --- | --- |
+| `release/<channel>/` | Clearly named installer to distribute |
+| `artifacts/` | Electrobun's installer, update archive (`.tar.zst`), and update metadata |
+| `build/` | Expanded app and temporary packaging files |
+| `dist/` | Bundled frontend from Vite |
+
+Electrobun's update archive in `artifacts/` is for the updater; the `-Setup`
+archive is the Linux installer. The repeated app folder and archive names in
+`build/` are packaging inputs, not additional releases.

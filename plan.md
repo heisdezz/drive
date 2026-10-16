@@ -47,3 +47,7 @@ Already present in the target: system-folder ignore defaults, local media stream
 ## Merge destination search
 
 16. Add a search field and keyboard-accessible destination list to the merge dialog. Keep selection visible while filtering and bound the rendered results for large libraries.
+
+## Permanent album deletion
+
+17. Keep the existing option to remove an album while moving its media to Unsorted Media, and add a separate permanent option that deletes the album's own indexed files and records. Stage files before committing so failures can restore them, preserve child albums, and clean unused thumbnails.

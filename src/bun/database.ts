@@ -60,6 +60,7 @@ export function initializeDatabase(db: Database) {
 	db.run("CREATE INDEX IF NOT EXISTS idx_media_mime ON media_items(mime_type);");
 	db.run("CREATE INDEX IF NOT EXISTS idx_media_name ON media_items(original_relative_path, id);");
 	db.run("CREATE INDEX IF NOT EXISTS idx_media_size ON media_items(file_size, id);");
+	db.run("CREATE INDEX IF NOT EXISTS idx_media_hash ON media_items(file_hash);");
 
 	// Trigram FTS accelerates the existing substring search. External content
 	// keeps one source of truth in media_items; triggers maintain the index.

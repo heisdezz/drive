@@ -71,3 +71,9 @@ Final verification: `bun run typecheck`, `bunx vite build`, and `git diff --chec
 ## Merge destination search
 
 - The merge dialog now filters destination albums by name as the user types. Results appear in a scrollable radio list, capped at 100 visible rows; the selected destination remains named above the list when a filter hides it. Search resets when the dialog opens.
+
+## Permanent album deletion
+
+- The delete dialog now offers **Keep files** and **Delete permanently**. Keep files retains the prior behavior, moving indexed media to Unsorted Media. The permanent action stages only media records owned by the selected album, deletes those records and the album in one SQLite transaction, then removes the staged files. Child albums and their files remain.
+- A failed transaction restores staged files. Unused thumbnails are removed after commit; thumbnails still referenced by another media item remain. The album's own empty directory is removed when possible.
+- Tests cover permanent deletion, child preservation, shared thumbnails, rollback, and the existing keep-files action. The full suite passes 16 tests; the renderer build and layout detector pass. Typecheck still reports only the six existing Electrobun dependency errors.

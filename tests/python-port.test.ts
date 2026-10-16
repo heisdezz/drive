@@ -121,6 +121,73 @@ test("a failed album merge restores already moved files and catalog rows", async
 	check.close();
 });
 
+test("permanent album deletion removes its own media but preserves child albums and shared thumbnails", async () => {
+	const { root, db } = library();
+	const insertAlbum = db.prepare("INSERT INTO albums (name, relative_path) VALUES (?, ?)");
+	const parentId = Number(insertAlbum.run("Parent", "albums/Parent").lastInsertRowid);
+	const childId = Number(insertAlbum.run("Parent/Child", "albums/Parent/Child").lastInsertRowid);
+	const otherId = Number(insertAlbum.run("Other", "albums/Other").lastInsertRowid);
+	for (const dir of ["Parent/Child", "Other", "thumbs"]) fs.mkdirSync(path.join(root, "albums", dir), { recursive: true });
+	for (const file of ["Parent/one.jpg", "Parent/two.jpg", "Parent/Child/child.jpg", "Other/other.jpg"]) {
+		fs.writeFileSync(path.join(root, "albums", file), file);
+	}
+	for (const hash of ["unique", "shared"]) fs.writeFileSync(path.join(root, "albums", "thumbs", `${hash}.jpg`), hash);
+	const insertMedia = db.prepare("INSERT INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, 1, 'image/jpeg', ?)");
+	insertMedia.run("unique", "original/one.jpg", "albums/Parent/one.jpg", parentId);
+	insertMedia.run("shared", "original/two.jpg", "albums/Parent/two.jpg", parentId);
+	insertMedia.run("child", "original/child.jpg", "albums/Parent/Child/child.jpg", childId);
+	insertMedia.run("shared", "original/other.jpg", "albums/Other/other.jpg", otherId);
+	db.close();
+
+	expect(await albumHandlers.deleteAlbum({ drivePath: root, albumId: parentId, permanent: true })).toEqual({ success: true, deletedCount: 2 });
+	const check = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+	expect(check.prepare("SELECT id FROM albums WHERE id = ?").get(parentId)).toBeNull();
+	expect(check.prepare("SELECT media_count FROM albums WHERE id = ?").get(childId)).toEqual({ media_count: 1 });
+	expect(check.prepare("SELECT media_count FROM albums WHERE id = ?").get(otherId)).toEqual({ media_count: 1 });
+	expect(check.prepare("SELECT count(*) AS count FROM media_items WHERE album_id = ?").get(parentId)).toEqual({ count: 0 });
+	expect(fs.existsSync(path.join(root, "albums", "Parent", "one.jpg"))).toBe(false);
+	expect(fs.existsSync(path.join(root, "albums", "Parent", "two.jpg"))).toBe(false);
+	expect(fs.existsSync(path.join(root, "albums", "Parent", "Child", "child.jpg"))).toBe(true);
+	expect(fs.existsSync(path.join(root, "albums", "thumbs", "unique.jpg"))).toBe(false);
+	expect(fs.existsSync(path.join(root, "albums", "thumbs", "shared.jpg"))).toBe(true);
+	check.close();
+});
+
+test("failed permanent album deletion restores staged files and database rows", async () => {
+	const { root, db } = library();
+	const albumId = Number(db.prepare("INSERT INTO albums (name, relative_path) VALUES ('Source', 'albums/Source')").run().lastInsertRowid);
+	fs.mkdirSync(path.join(root, "albums", "Source"));
+	fs.writeFileSync(path.join(root, "albums", "Source", "present.jpg"), "present");
+	const insertMedia = db.prepare("INSERT INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, 1, 'image/jpeg', ?)");
+	insertMedia.run("present", "original/present.jpg", "albums/Source/present.jpg", albumId);
+	insertMedia.run("invalid", "original/invalid.jpg", "../../outside.jpg", albumId);
+	db.close();
+
+	const result = await albumHandlers.deleteAlbum({ drivePath: root, albumId, permanent: true });
+	expect(result.success).toBe(false);
+	expect(result.error).toContain("Invalid media path");
+	expect(fs.readFileSync(path.join(root, "albums", "Source", "present.jpg"), "utf8")).toBe("present");
+	const check = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+	expect(check.prepare("SELECT media_count FROM albums WHERE id = ?").get(albumId)).toEqual({ media_count: 2 });
+	expect(check.prepare("SELECT count(*) AS count FROM media_items WHERE album_id = ?").get(albumId)).toEqual({ count: 2 });
+	check.close();
+});
+
+test("default album deletion still moves media to Unsorted Media", async () => {
+	const { root, db } = library();
+	const albumId = Number(db.prepare("INSERT INTO albums (name, relative_path) VALUES ('Source', 'albums/Source')").run().lastInsertRowid);
+	fs.mkdirSync(path.join(root, "albums", "Source"));
+	fs.writeFileSync(path.join(root, "albums", "Source", "keep.jpg"), "keep");
+	db.prepare("INSERT INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES ('keep', 'original/keep.jpg', 'albums/Source/keep.jpg', 1, 'image/jpeg', ?)").run(albumId);
+	db.close();
+
+	expect(await albumHandlers.deleteAlbum({ drivePath: root, albumId })).toEqual({ success: true });
+	expect(fs.readFileSync(path.join(root, "albums", "unknown", "keep.jpg"), "utf8")).toBe("keep");
+	const check = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+	expect(check.prepare("SELECT a.name AS album_name FROM media_items m JOIN albums a ON a.id = m.album_id WHERE m.file_hash = 'keep'").get()).toEqual({ album_name: "unknown" });
+	check.close();
+});
+
 describe("Python scanner update", () => {
 	test("ignore rules match complete path segments", () => {
 		expect(isIgnored("raw", "photos/raw", ["raw"])).toBe(true);

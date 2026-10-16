@@ -3,7 +3,7 @@ import path from "node:path";
 import { Database } from "bun:sqlite";
 import { addLog } from "../logger";
 import { assertWritable, getDatabaseConnection, hasAlbumMediaCounts, hasMediaSearchIndex, openReadableDb } from "../database";
-import { MoveBatch, beginAlbumRename } from "../file-ops";
+import { MoveBatch, beginAlbumRename, newDeletionBatch } from "../file-ops";
 import type { RpcHandlers } from "./types";
 
 function normalizeAlbumName(name: string): string {
@@ -328,7 +328,7 @@ export const albumHandlers: Pick<
 			db?.close();
 		}
 	},
-	deleteAlbum: async ({ drivePath, albumId }) => {
+	deleteAlbum: async ({ drivePath, albumId, permanent }) => {
 		addLog("info", `RPC Request: deleteAlbum invoked`, `albumId: ${albumId}`);
 		let db: Database | null = null;
 		try {
@@ -349,6 +349,76 @@ export const albumHandlers: Pick<
 			// 2. Prevent deleting "unknown" album
 			if (album.name === "unknown") {
 				throw new Error("Cannot delete the default unsorted album.");
+			}
+
+			if (permanent) {
+				const root = path.resolve(drivePath);
+				const realRoot = fs.realpathSync(root);
+				const albumDir = path.resolve(root, "albums", album.name);
+				if (!albumDir.startsWith(path.join(root, "albums") + path.sep)) {
+					throw new Error("Invalid album path.");
+				}
+				const batchDir = newDeletionBatch(drivePath);
+				const staged = new MoveBatch();
+				const hashes = new Set<string>();
+				const page = db.prepare("SELECT id, current_relative_path, file_hash FROM media_items WHERE album_id = ? AND id > ? ORDER BY id LIMIT 500");
+				const deleteItem = db.prepare("DELETE FROM media_items WHERE id = ?");
+				let lastId = 0;
+				let deletedCount = 0;
+				db.run("BEGIN TRANSACTION;");
+				try {
+					while (true) {
+						const items = page.all(albumId, lastId) as { id: number; current_relative_path: string; file_hash: string }[];
+						if (!items.length) break;
+						for (const item of items) {
+							lastId = item.id;
+							const fullPath = path.resolve(root, item.current_relative_path);
+							if (!fullPath.startsWith(root + path.sep)) throw new Error(`Invalid media path: ${item.current_relative_path}`);
+							if (fs.existsSync(fullPath)) {
+								const realParent = fs.realpathSync(path.dirname(fullPath));
+								if (realParent !== realRoot && !realParent.startsWith(realRoot + path.sep)) {
+									throw new Error(`Media path leaves the drive: ${item.current_relative_path}`);
+								}
+								await staged.move(fullPath, path.join(batchDir, String(item.id)));
+							}
+							deleteItem.run(item.id);
+							hashes.add(item.file_hash);
+							deletedCount++;
+						}
+					}
+					db.prepare("DELETE FROM albums WHERE id = ?").run(albumId);
+					db.run("COMMIT;");
+				} catch (transactionErr) {
+					db.run("ROLLBACK;");
+					await staged.rollback();
+					await fs.promises.rm(batchDir, { recursive: true, force: true });
+					throw transactionErr;
+				}
+				try { await fs.promises.rm(batchDir, { recursive: true, force: true }); }
+				catch (cleanupErr: any) { addLog("warn", `Could not clear staged album files: ${cleanupErr.message}`, batchDir); }
+				try {
+					const stillUsesHash = db.prepare("SELECT 1 FROM media_items WHERE file_hash = ? LIMIT 1");
+					const thumbsDir = fs.realpathSync(path.join(root, "albums", "thumbs"));
+					if (thumbsDir.startsWith(realRoot + path.sep)) {
+						for (const hash of hashes) {
+							if (stillUsesHash.get(hash)) continue;
+							const thumbPath = path.resolve(thumbsDir, `${hash}.jpg`);
+							if (thumbPath.startsWith(thumbsDir + path.sep)) {
+								await fs.promises.unlink(thumbPath).catch(() => {});
+							}
+						}
+					}
+				} catch (thumbErr: any) {
+					addLog("warn", `Could not clean album thumbnails: ${thumbErr.message}`);
+				}
+				try { await fs.promises.rmdir(albumDir); }
+				catch (dirErr: any) {
+					if (dirErr.code !== "ENOENT" && dirErr.code !== "ENOTEMPTY" && dirErr.code !== "EEXIST") {
+						addLog("warn", `Could not remove empty album directory: ${dirErr.message}`, albumDir);
+					}
+				}
+				addLog("info", `Permanently deleted album ID ${albumId} and ${deletedCount} media files`);
+				return { success: true, deletedCount };
 			}
 
 			// 3. Find or create the fallback 'unknown' album

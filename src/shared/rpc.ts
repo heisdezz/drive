@@ -265,9 +265,11 @@ export interface MainRPC extends ElectrobunRPCSchema {
 				params: {
 					drivePath: string;
 					albumId: number;
+					permanent?: boolean;
 				};
 				response: {
 					success: boolean;
+					deletedCount?: number;
 					error?: string;
 				};
 			};

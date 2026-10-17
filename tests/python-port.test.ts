@@ -121,6 +121,53 @@ test("a failed album merge restores already moved files and catalog rows", async
 	check.close();
 });
 
+test("merging several selected albums keeps one destination and resolves collisions", async () => {
+	const { root, db } = library();
+	const insertAlbum = db.prepare("INSERT INTO albums (name, relative_path) VALUES (?, ?)");
+	const firstId = Number(insertAlbum.run("First", "albums/First").lastInsertRowid);
+	const secondId = Number(insertAlbum.run("Second", "albums/Second").lastInsertRowid);
+	const targetId = Number(insertAlbum.run("Target", "albums/Target").lastInsertRowid);
+	const insertMedia = db.prepare("INSERT INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, 1, 'image/jpeg', ?)");
+	for (const [name, id] of [["First", firstId], ["Second", secondId], ["Target", targetId]] as const) {
+		fs.mkdirSync(path.join(root, "albums", name));
+		fs.writeFileSync(path.join(root, "albums", name, "photo.jpg"), name);
+		insertMedia.run(name, `original/${name}.jpg`, `albums/${name}/photo.jpg`, id);
+	}
+	db.close();
+
+	expect(await albumHandlers.mergeAlbums({ drivePath: root, sourceAlbumIds: [firstId, secondId], targetAlbumId: targetId })).toMatchObject({ success: true, movedCount: 2 });
+	const check = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+	expect(check.prepare("SELECT media_count FROM albums WHERE id = ?").get(targetId)).toEqual({ media_count: 3 });
+	expect(check.prepare("SELECT id FROM albums WHERE id IN (?, ?)").all(firstId, secondId)).toEqual([]);
+	expect(fs.readFileSync(path.join(root, "albums", "Target", "photo.jpg"), "utf8")).toBe("Target");
+	expect(fs.readFileSync(path.join(root, "albums", "Target", "photo_1.jpg"), "utf8")).toBe("First");
+	expect(fs.readFileSync(path.join(root, "albums", "Target", "photo_2.jpg"), "utf8")).toBe("Second");
+	check.close();
+});
+
+test("a failed multi-album merge rolls back files moved from earlier sources", async () => {
+	const { root, db } = library();
+	const insertAlbum = db.prepare("INSERT INTO albums (name, relative_path) VALUES (?, ?)");
+	const firstId = Number(insertAlbum.run("First", "albums/First").lastInsertRowid);
+	const secondId = Number(insertAlbum.run("Second", "albums/Second").lastInsertRowid);
+	const targetId = Number(insertAlbum.run("Target", "albums/Target").lastInsertRowid);
+	for (const name of ["First", "Second", "Target"]) fs.mkdirSync(path.join(root, "albums", name));
+	fs.writeFileSync(path.join(root, "albums", "First", "present.jpg"), "present");
+	const insertMedia = db.prepare("INSERT INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, 1, 'image/jpeg', ?)");
+	insertMedia.run("present", "original/present.jpg", "albums/First/present.jpg", firstId);
+	insertMedia.run("missing", "original/missing.jpg", "albums/Second/missing.jpg", secondId);
+	db.close();
+
+	const result = await albumHandlers.mergeAlbums({ drivePath: root, sourceAlbumIds: [firstId, secondId], targetAlbumId: targetId });
+	expect(result.success).toBe(false);
+	expect(fs.existsSync(path.join(root, "albums", "First", "present.jpg"))).toBe(true);
+	expect(fs.existsSync(path.join(root, "albums", "Target", "present.jpg"))).toBe(false);
+	const check = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+	expect(check.prepare("SELECT album_id FROM media_items WHERE file_hash = 'present'").get()).toEqual({ album_id: firstId });
+	expect(check.prepare("SELECT id FROM albums WHERE id IN (?, ?)").all(firstId, secondId).length).toBe(2);
+	check.close();
+});
+
 test("permanent album deletion removes its own media but preserves child albums and shared thumbnails", async () => {
 	const { root, db } = library();
 	const insertAlbum = db.prepare("INSERT INTO albums (name, relative_path) VALUES (?, ?)");

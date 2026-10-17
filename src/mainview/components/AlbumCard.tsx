@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import { Link, useNavigate } from "@tanstack/solid-router";
-import { Folder, Layers, Calendar, Edit2, Trash2, FolderInput, ExternalLink } from "lucide-solid";
+import { Folder, Layers, Calendar, Edit2, Trash2, FolderInput, ExternalLink, CheckSquare } from "lucide-solid";
 import { useSettingsStore } from "@/store/settings_store";
 import { AppContextMenu } from "@/components/AppContextMenu";
 
@@ -63,6 +63,9 @@ interface AlbumCardProps {
   onEdit?: (album: Album) => void;
   onDelete?: (album: Album) => void;
   onMerge?: (album: Album) => void;
+  selecting?: boolean;
+  selected?: boolean;
+  onSelect?: (album: Album) => void;
 }
 
 export function AlbumCard(props: AlbumCardProps) {
@@ -72,6 +75,7 @@ export function AlbumCard(props: AlbumCardProps) {
       label={`Actions for ${props.album.name === "unknown" ? "Unsorted Media" : props.album.name}`}
       actions={[
         { label: "Open album", icon: <ExternalLink class="h-4 w-4" />, onSelect: () => navigate({ to: "/album/$id", params: { id: String(props.album.id) } }) },
+        { label: props.selected ? "Deselect album" : "Select album", icon: <CheckSquare class="h-4 w-4" />, onSelect: () => props.onSelect?.(props.album), disabled: !props.onSelect },
         { label: "Edit album", icon: <Edit2 class="h-4 w-4" />, onSelect: () => props.onEdit?.(props.album), disabled: props.album.name === "unknown" || !props.onEdit, separatorBefore: true },
         { label: "Merge into…", icon: <FolderInput class="h-4 w-4" />, onSelect: () => props.onMerge?.(props.album), disabled: props.album.name === "unknown" || !props.onMerge },
         { label: "Delete album", icon: <Trash2 class="h-4 w-4" />, onSelect: () => props.onDelete?.(props.album), disabled: props.album.name === "unknown" || !props.onDelete, destructive: true, separatorBefore: true },
@@ -81,11 +85,27 @@ export function AlbumCard(props: AlbumCardProps) {
       to="/album/$id"
       params={{ id: String(props.album.id) }}
       preload={false}
+      onClick={(event) => {
+        if (props.selecting) {
+          event.preventDefault();
+          props.onSelect?.(props.album);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (props.selecting && event.key === " ") {
+          event.preventDefault();
+          props.onSelect?.(props.album);
+        }
+      }}
+      role={props.selecting ? "button" : undefined}
+      aria-label={props.selecting ? `${props.selected ? "Deselect" : "Select"} ${props.album.name === "unknown" ? "Unsorted Media" : props.album.name}` : undefined}
+      aria-pressed={props.selecting ? props.selected : undefined}
+      data-selected={props.selected ? "true" : "false"}
       style={{
         "content-visibility": "auto",
         "contain-intrinsic-size": "auto 320px",
       }}
-      class="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-[transform,box-shadow,border-color] duration-300 ease-out hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer"
+      class="group flex flex-col bg-base-300/60 border border-base-200 rounded-2xl overflow-hidden shadow-lg transition-[transform,box-shadow,border-color] duration-300 ease-out hover:scale-[1.02] hover:shadow-2xl hover:border-base-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary data-[selected=true]:ring-2 data-[selected=true]:ring-primary data-[selected=true]:border-primary"
     >
       <div class="aspect-[4/3] w-full relative overflow-hidden bg-base-300 flex items-center justify-center pointer-events-none">
         <AlbumCover
@@ -93,6 +113,11 @@ export function AlbumCard(props: AlbumCardProps) {
           drivePath={props.drivePath}
           albumName={props.album.name}
         />
+        <Show when={props.selecting}>
+          <span aria-hidden="true" class={`absolute left-3 top-3 flex h-6 w-6 items-center justify-center rounded-md border-2 shadow-md ${props.selected ? "border-primary bg-primary text-primary-content" : "border-base-content/70 bg-base-300/90 text-transparent"}`}>
+            <CheckSquare class="h-4 w-4" />
+          </span>
+        </Show>
         <div class="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-base-300 border border-base-200/80 flex items-center gap-1.5 text-[10px] font-bold text-base-content shadow-md pointer-events-none">
           <Layers class="w-3.5 h-3.5 text-primary" />
           <span>{props.album.media_count} items</span>
@@ -116,7 +141,7 @@ export function AlbumCard(props: AlbumCardProps) {
             <Calendar class="w-3 h-3" />
             {new Date(props.album.created_at).toLocaleDateString()}
           </span>
-          <Show when={props.album.name !== "unknown"}>
+          <Show when={props.album.name !== "unknown" && !props.selecting}>
             <div class="flex gap-1.5">
               <button
                 onClick={(e) => {

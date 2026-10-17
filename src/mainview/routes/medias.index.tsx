@@ -23,26 +23,11 @@ import { createMutation } from "@tanstack/solid-query";
 import { useSelectionStore } from "@/store/selection_store";
 import { useMediaCatalog } from "@/hooks/useMediaCatalog";
 import DialogModal, { type ModalHandle } from "@/components/DialogModal";
-
-interface MediaSearch {
-  page?: number;
-  search?: string;
-  filter?: "all" | "images" | "videos";
-  sortBy?: "date" | "name" | "size";
-  sortOrder?: "asc" | "desc";
-}
+import { validateMediaSearch, patchSearch, patchPagedSearch, type MediaSearch } from "@/lib/catalogSearch";
 
 export const Route = createFileRoute("/medias/")({
   component: MediasComponent,
-  validateSearch: (search: Record<string, unknown>): MediaSearch => {
-    return {
-      page: Number(search.page) || 0,
-      search: (search.search as string) || "",
-      filter: (search.filter as "all" | "images" | "videos") || "all",
-      sortBy: (search.sortBy as "date" | "name" | "size") || "date",
-      sortOrder: (search.sortOrder as "asc" | "desc") || "desc",
-    };
-  },
+  validateSearch: validateMediaSearch,
 });
 
 function MediasComponent() {
@@ -141,47 +126,31 @@ function MediasComponent() {
 
   const setPage = (newPage: number) => {
     navigate({
-      search: (prev: MediaSearch) => ({ ...prev, page: newPage }),
+      search: (prev: MediaSearch) => patchSearch(prev, { page: newPage }),
     });
   };
 
   const setSearchQuery = (newSearch: string) => {
     navigate({
-      search: (prev: MediaSearch) => ({
-        ...prev,
-        search: newSearch,
-        page: 0,
-      }),
+      search: (prev: MediaSearch) => patchPagedSearch(prev, { search: newSearch }),
     });
   };
 
   const setFilterType = (newFilter: "all" | "images" | "videos") => {
     navigate({
-      search: (prev: MediaSearch) => ({
-        ...prev,
-        filter: newFilter,
-        page: 0,
-      }),
+      search: (prev: MediaSearch) => patchPagedSearch(prev, { filter: newFilter }),
     });
   };
 
   const setSortBy = (newSortBy: "date" | "name" | "size") => {
     navigate({
-      search: (prev: MediaSearch) => ({
-        ...prev,
-        sortBy: newSortBy,
-        page: 0,
-      }),
+      search: (prev: MediaSearch) => patchPagedSearch(prev, { sortBy: newSortBy }),
     });
   };
 
   const toggleSortOrder = () => {
     navigate({
-      search: (prev: MediaSearch) => ({
-        ...prev,
-        sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
-        page: 0,
-      }),
+      search: (prev: MediaSearch) => patchPagedSearch(prev, { sortOrder: prev.sortOrder === "asc" ? "desc" : "asc" }),
     });
   };
 

@@ -493,22 +493,25 @@ export const albumHandlers: Pick<
 			db?.close();
 		}
 	},
-	mergeAlbums: async ({ drivePath, sourceAlbumId, targetAlbumId }) => {
+	mergeAlbums: async ({ drivePath, sourceAlbumId, sourceAlbumIds, targetAlbumId }) => {
 		let db: Database | null = null;
 		let movedCount = 0;
 		try {
-			if (!Number.isSafeInteger(sourceAlbumId) || !Number.isSafeInteger(targetAlbumId) || sourceAlbumId === targetAlbumId) {
-				throw new Error("Choose two different albums to merge.");
+			const ids = sourceAlbumIds ?? (sourceAlbumId === undefined ? [] : [sourceAlbumId]);
+			if (!Array.isArray(ids) || ids.length === 0 || !Number.isSafeInteger(targetAlbumId) ||
+				ids.some(id => !Number.isSafeInteger(id) || id === targetAlbumId) || new Set(ids).size !== ids.length) {
+				throw new Error("Choose distinct source albums and one different destination album.");
 			}
 			const dbPath = path.join(drivePath, "albums", ".media_library.db");
 			if (!fs.existsSync(dbPath)) throw new Error("Library database not found");
 			assertWritable(drivePath);
 			db = getDatabaseConnection(dbPath);
 			const getAlbum = db.prepare("SELECT id, name, relative_path FROM albums WHERE id = ?");
-			const source = getAlbum.get(sourceAlbumId) as { id: number; name: string; relative_path: string } | undefined;
-			const target = getAlbum.get(targetAlbumId) as { id: number; name: string; relative_path: string } | undefined;
-			if (!source || !target) throw new Error("One of the selected albums no longer exists.");
-			if (source.name === "unknown") throw new Error("The Unsorted Media album cannot be merged into another album.");
+			type AlbumRow = { id: number; name: string; relative_path: string };
+			const sources = ids.map(id => getAlbum.get(id) as AlbumRow | undefined);
+			const target = getAlbum.get(targetAlbumId) as AlbumRow | undefined;
+			if (sources.some(source => !source) || !target) throw new Error("One of the selected albums no longer exists.");
+			if (sources.some(source => source!.name === "unknown")) throw new Error("The Unsorted Media album cannot be merged into another album.");
 
 			const root = path.resolve(drivePath);
 			const albumsRoot = path.join(root, "albums");
@@ -517,9 +520,9 @@ export const albumHandlers: Pick<
 				if (!resolved.startsWith(root + path.sep)) throw new Error(`Invalid media path: ${relative}`);
 				return resolved;
 			};
-			const sourceDir = safePath(source.relative_path);
 			const targetDir = safePath(target.relative_path);
-			if (!sourceDir.startsWith(albumsRoot + path.sep) || !targetDir.startsWith(albumsRoot + path.sep)) {
+			const sourceDirs = sources.map(source => safePath(source!.relative_path));
+			if (sourceDirs.some(dir => !dir.startsWith(albumsRoot + path.sep)) || !targetDir.startsWith(albumsRoot + path.sep)) {
 				throw new Error("Album path is outside the library.");
 			}
 			await fs.promises.mkdir(targetDir, { recursive: true });
@@ -527,31 +530,34 @@ export const albumHandlers: Pick<
 			const page = db.prepare("SELECT id, current_relative_path FROM media_items WHERE album_id = ? AND id > ? ORDER BY id LIMIT 500");
 			const update = db.prepare("UPDATE media_items SET album_id = ?, current_relative_path = ? WHERE id = ?");
 			const collisionSuffixes = new Map<string, number>();
-			let lastId = 0;
 			db.run("BEGIN TRANSACTION;");
 			try {
-				while (true) {
-					const items = page.all(sourceAlbumId, lastId) as { id: number; current_relative_path: string }[];
-					if (!items.length) break;
-					for (const item of items) {
-						lastId = item.id;
-						const currentPath = safePath(item.current_relative_path);
-						if (!fs.existsSync(currentPath)) throw new Error(`Media file is missing: ${item.current_relative_path}. Validate Files, then try again.`);
-						const filename = path.basename(currentPath);
-						const extension = path.extname(filename);
-						const base = path.basename(filename, extension);
-						let destination = path.join(targetDir, filename);
-						let suffix = collisionSuffixes.get(filename) ?? 1;
-						while (destination !== currentPath && fs.existsSync(destination)) {
-							destination = path.join(targetDir, `${base}_${suffix++}${extension}`);
+				for (const id of ids) {
+					let lastId = 0;
+					while (true) {
+						const items = page.all(id, lastId) as { id: number; current_relative_path: string }[];
+						if (!items.length) break;
+						for (const item of items) {
+							lastId = item.id;
+							const currentPath = safePath(item.current_relative_path);
+							if (!fs.existsSync(currentPath)) throw new Error(`Media file is missing: ${item.current_relative_path}. Validate Files, then try again.`);
+							const filename = path.basename(currentPath);
+							const extension = path.extname(filename);
+							const base = path.basename(filename, extension);
+							let destination = path.join(targetDir, filename);
+							let suffix = collisionSuffixes.get(filename) ?? 1;
+							while (destination !== currentPath && fs.existsSync(destination)) {
+								destination = path.join(targetDir, `${base}_${suffix++}${extension}`);
+							}
+							collisionSuffixes.set(filename, suffix);
+							if (destination !== currentPath) await movedFiles.move(currentPath, destination, item.id);
+							update.run(targetAlbumId, path.relative(root, destination).split(path.sep).join("/"), item.id);
+							movedCount++;
 						}
-						collisionSuffixes.set(filename, suffix);
-						if (destination !== currentPath) await movedFiles.move(currentPath, destination, item.id);
-						update.run(targetAlbumId, path.relative(root, destination).split(path.sep).join("/"), item.id);
-						movedCount++;
 					}
 				}
-				db.prepare("DELETE FROM albums WHERE id = ?").run(sourceAlbumId);
+				const deleteAlbum = db.prepare("DELETE FROM albums WHERE id = ?");
+				for (const id of ids) deleteAlbum.run(id);
 				db.run("COMMIT;");
 				movedFiles.finish();
 			} catch (err) {
@@ -559,10 +565,12 @@ export const albumHandlers: Pick<
 				await movedFiles.rollback();
 				throw err;
 			}
-			try { await fs.promises.rmdir(sourceDir); }
-			catch (err: any) {
-				if (err.code !== "ENOENT" && err.code !== "ENOTEMPTY" && err.code !== "EEXIST") {
-					addLog("warn", `Could not remove empty source album directory: ${err.message}`, sourceDir);
+			for (const sourceDir of sourceDirs.sort((a, b) => b.length - a.length)) {
+				try { await fs.promises.rmdir(sourceDir); }
+				catch (err: any) {
+					if (err.code !== "ENOENT" && err.code !== "ENOTEMPTY" && err.code !== "EEXIST") {
+						addLog("warn", `Could not remove empty source album directory: ${err.message}`, sourceDir);
+					}
 				}
 			}
 			return { success: true, movedCount };

@@ -4,12 +4,17 @@ import { FolderInput, Search, X } from "lucide-solid";
 import { rpc } from "@/lib/rpc";
 import DialogModal, { type ModalHandle } from "@/components/DialogModal";
 import type { Album } from "@/components/AlbumCard";
-import type { AlbumDialogHandle } from "@/components/EditAlbumModal";
+
+export interface MergeAlbumDialogHandle {
+  open: (album: Album) => void;
+  openMany: (albums: Album[]) => void;
+}
 
 interface MergeAlbumModalProps {
   drivePath: string;
   albums: Album[];
-  ref?: AlbumDialogHandle | { current: AlbumDialogHandle | null } | ((handle: AlbumDialogHandle) => void);
+  onMerged?: () => void;
+  ref?: MergeAlbumDialogHandle | { current: MergeAlbumDialogHandle | null } | ((handle: MergeAlbumDialogHandle) => void);
 }
 
 const displayName = (album: Album) => album.name === "unknown" ? "Unsorted Media" : album.name;
@@ -17,11 +22,14 @@ const displayName = (album: Album) => album.name === "unknown" ? "Unsorted Media
 export function MergeAlbumModal(props: MergeAlbumModalProps) {
   let modalRef: ModalHandle | undefined;
   const queryClient = useQueryClient();
-  const [source, setSource] = createSignal<Album | null>(null);
+  const [sources, setSources] = createSignal<Album[]>([]);
+  const [batchMode, setBatchMode] = createSignal(false);
   const [targetId, setTargetId] = createSignal<number | null>(null);
   const [targetSearch, setTargetSearch] = createSignal("");
   const [error, setError] = createSignal("");
-  const targets = createMemo(() => props.albums.filter((album) => album.id !== source()?.id));
+  const targets = createMemo(() => batchMode()
+    ? sources().filter((album) => !sources().some((item) => item.name === "unknown") || album.name === "unknown")
+    : props.albums.filter((album) => album.id !== sources()[0]?.id));
   const filteredTargets = createMemo(() => {
     const query = targetSearch().trim().toLocaleLowerCase();
     return query
@@ -32,15 +40,20 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
   const visibleTargets = createMemo(() => filteredTargets().slice(0, 100));
   let searchRef: HTMLInputElement | undefined;
 
-  const handle: AlbumDialogHandle = {
+  const open = (albums: Album[], batch: boolean) => {
+    setSources(albums);
+    setBatchMode(batch);
+    setTargetId(batch ? (albums.find((album) => album.name === "unknown")?.id ?? null) : null);
+    setTargetSearch("");
+    setError("");
+    modalRef?.open();
+    searchRef?.focus();
+  };
+  const handle: MergeAlbumDialogHandle = {
     open: (album) => {
-      setSource(album);
-      setTargetId(null);
-      setTargetSearch("");
-      setError("");
-      modalRef?.open();
-      searchRef?.focus();
+      open([album], false);
     },
+    openMany: (albums) => { if (albums.length >= 2) open(albums, true); },
   };
 
   onMount(() => {
@@ -49,21 +62,24 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
   });
 
   const mutation = createMutation(() => ({
-    mutationFn: async ({ sourceAlbumId, targetAlbumId }: { sourceAlbumId: number; targetAlbumId: number }) => {
-      const result = await rpc.request.mergeAlbums({ drivePath: props.drivePath, sourceAlbumId, targetAlbumId });
+    mutationFn: async ({ sourceAlbumIds, targetAlbumId }: { sourceAlbumIds: number[]; targetAlbumId: number }) => {
+      const result = await rpc.request.mergeAlbums({ drivePath: props.drivePath, sourceAlbumIds, targetAlbumId });
       if (!result.success) throw new Error(result.error || "Could not merge albums.");
       return result;
     },
-    onSuccess: async (_, { sourceAlbumId, targetAlbumId }) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["albums", props.drivePath] }),
-        queryClient.invalidateQueries({ queryKey: ["album", props.drivePath, sourceAlbumId] }),
-        queryClient.invalidateQueries({ queryKey: ["album", props.drivePath, targetAlbumId] }),
-        queryClient.invalidateQueries({ queryKey: ["album-media", props.drivePath, sourceAlbumId] }),
-        queryClient.invalidateQueries({ queryKey: ["album-media", props.drivePath, targetAlbumId] }),
-      ]);
+    onSuccess: (_, { sourceAlbumIds, targetAlbumId }) => {
       modalRef?.close();
-      setSource(null);
+      setSources([]);
+      props.onMerged?.();
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["albums", props.drivePath] }),
+        queryClient.invalidateQueries({ queryKey: ["album", props.drivePath, targetAlbumId] }),
+        queryClient.invalidateQueries({ queryKey: ["album-media", props.drivePath, targetAlbumId] }),
+        ...sourceAlbumIds.flatMap((id) => [
+          queryClient.invalidateQueries({ queryKey: ["album", props.drivePath, id] }),
+          queryClient.invalidateQueries({ queryKey: ["album-media", props.drivePath, id] }),
+        ]),
+      ]);
     },
     onError: (err: Error) => setError(err.message),
   }));
@@ -80,9 +96,9 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
             class="btn btn-sm btn-primary gap-2"
             disabled={mutation.isPending || !selectedTarget()}
             onClick={() => {
-              const sourceAlbumId = source()?.id;
               const targetAlbumId = targetId();
-              if (sourceAlbumId != null && targetAlbumId != null) mutation.mutate({ sourceAlbumId, targetAlbumId });
+              const sourceAlbumIds = sources().filter((album) => album.id !== targetAlbumId).map((album) => album.id);
+              if (sourceAlbumIds.length && targetAlbumId != null) mutation.mutate({ sourceAlbumIds, targetAlbumId });
             }}
           >
             <FolderInput class="h-4 w-4" /> {mutation.isPending ? "Merging…" : "Merge albums"}
@@ -92,10 +108,12 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
     >
       <div class="space-y-4 text-left text-base-content">
         <p class="text-sm leading-relaxed">
-          Move {source()?.media_count ?? 0} items from <strong>{source() && displayName(source()!)}</strong> into another album. The source album will be removed; any child albums will remain.
+          <Show when={batchMode()} fallback={<>Move {sources()[0]?.media_count ?? 0} items from <strong>{sources()[0] && displayName(sources()[0])}</strong> into another album. The source album will be removed; any child albums will remain.</>}>
+            Merge {sources().length} selected albums. Choose which one to keep. The other {sources().length - 1} album{sources().length === 2 ? "" : "s"} will be removed; their items will move into the destination.
+          </Show>
         </p>
         <div class="space-y-2">
-          <label for="merge-album-search" class="block text-xs font-bold">Destination album</label>
+          <label for="merge-album-search" class="block text-xs font-bold">{batchMode() ? "Album to keep" : "Destination album"}</label>
           <div class="relative">
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-base-content/50" />
             <input

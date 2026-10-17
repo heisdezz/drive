@@ -274,7 +274,7 @@ export interface MainRPC extends ElectrobunRPCSchema {
 				};
 			};
 			mergeAlbums: {
-				params: { drivePath: string; sourceAlbumId: number; targetAlbumId: number };
+			params: { drivePath: string; targetAlbumId: number; sourceAlbumId?: number; sourceAlbumIds?: number[] };
 				response: { success: boolean; movedCount: number; error?: string };
 			};
 			validateAlbumFiles: {

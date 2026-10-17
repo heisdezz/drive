@@ -1,10 +1,11 @@
-import { createSignal, createMemo, Show, For } from "solid-js";
+import { createSignal, createMemo, createEffect, Show, For } from "solid-js";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/solid-router";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import { useDriveStore } from "@/store/drive_store";
 import { useSettingsStore } from "@/store/settings_store";
 import { rpc } from "@/lib/rpc";
-import { Library, Loader2, FolderPlus, RotateCw } from "lucide-solid";
+import { Library, Loader2, FolderPlus, RotateCw, CheckSquare, FolderInput } from "lucide-solid";
+import { patchSearch, validateAlbumsSearch, type AlbumsSearch, type AlbumSortBy } from "@/lib/catalogSearch";
 import { AlbumCard, type Album } from "@/components/AlbumCard";
 import {
   CreateAlbumModal,
@@ -15,22 +16,13 @@ import {
   type AlbumDialogHandle,
 } from "@/components/EditAlbumModal";
 import { DeleteAlbumModal } from "@/components/DeleteAlbumModal";
-import { MergeAlbumModal } from "@/components/MergeAlbumModal";
-import {
-  AlbumsFilterBar,
-  type AlbumSortBy,
-} from "@/components/AlbumsFilterBar";
+import { MergeAlbumModal, type MergeAlbumDialogHandle } from "@/components/MergeAlbumModal";
+import { AlbumsFilterBar } from "@/components/AlbumsFilterBar";
 import { NoDriveSelected, DriveUnmounted } from "@/components/AlbumsEmptyState";
-
-interface AlbumsSearch {
-  search?: string;
-}
 
 export const Route = createFileRoute("/albums/")({
   component: AlbumsIndexComponent,
-  validateSearch: (search: Record<string, unknown>): AlbumsSearch => ({
-    search: typeof search.search === "string" && search.search ? search.search : undefined,
-  }),
+  validateSearch: validateAlbumsSearch,
 });
 
 function AlbumsIndexComponent() {
@@ -73,21 +65,46 @@ function AlbumsIndexComponent() {
   const searchQuery = () => routeSearch().search || "";
   const setSearchQuery = (value: string) => {
     navigate({
-      search: (previous: AlbumsSearch) => ({ ...previous, search: value || undefined }),
+      search: (previous: AlbumsSearch) => patchSearch(previous, { search: value || undefined }),
       replace: true,
       resetScroll: false,
     });
   };
-  const [sortBy, setSortBy] = createSignal<AlbumSortBy>("name");
+  const sortBy = () => routeSearch().sortBy || "name";
+  const setSortBy = (value: AlbumSortBy) => navigate({
+    search: (previous: AlbumsSearch) => patchSearch(previous, { sortBy: value }),
+    replace: true,
+    resetScroll: false,
+  });
+  const [selecting, setSelecting] = createSignal(false);
+  const [selectedIds, setSelectedIds] = createSignal<Set<number>>(new Set());
+  createEffect(() => {
+    drive.selectedDrive?.path;
+    setSelecting(false);
+    setSelectedIds(new Set<number>());
+  });
 
   let createModalRef: ModalHandle | undefined;
   let editModalRef: AlbumDialogHandle | undefined;
   let deleteModalRef: AlbumDialogHandle | undefined;
-  let mergeModalRef: AlbumDialogHandle | undefined;
+  let mergeModalRef: MergeAlbumDialogHandle | undefined;
 
   const handleEdit = (album: Album) => editModalRef?.open(album);
   const handleDelete = (album: Album) => deleteModalRef?.open(album);
   const handleMerge = (album: Album) => mergeModalRef?.open(album);
+  const toggleSelected = (album: Album) => {
+    setSelecting(true);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(album.id)) next.delete(album.id);
+      else next.add(album.id);
+      return next;
+    });
+  };
+  const cancelSelection = () => {
+    setSelecting(false);
+    setSelectedIds(new Set<number>());
+  };
 
   const albums = () => albumsQuery.data || [];
 
@@ -110,6 +127,19 @@ function AlbumsIndexComponent() {
         return a.name.localeCompare(b.name);
       });
   });
+  const selectedAlbums = createMemo(() => albums().filter((album) => selectedIds().has(album.id)));
+  const allVisibleSelected = () => filteredAlbums().length > 0 && filteredAlbums().every((album) => selectedIds().has(album.id));
+  const selectVisible = () => {
+    const remove = allVisibleSelected();
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const album of filteredAlbums()) {
+        if (remove) next.delete(album.id);
+        else next.add(album.id);
+      }
+      return next;
+    });
+  };
 
   return (
     <Show when={drive.selectedDrive} fallback={<NoDriveSelected />}>
@@ -154,6 +184,22 @@ function AlbumsIndexComponent() {
             onSortChange={setSortBy}
           />
 
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-base-200 bg-base-200/60 p-3">
+            <button type="button" class="btn btn-sm btn-outline gap-2" aria-pressed={selecting()} onClick={() => selecting() ? cancelSelection() : setSelecting(true)}>
+              <CheckSquare class="h-4 w-4" /> {selecting() ? "Cancel selection" : "Select albums"}
+            </button>
+            <Show when={selecting()}>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-medium tabular-nums text-base-content/70" aria-live="polite">{selectedAlbums().length} selected</span>
+                <button type="button" class="btn btn-sm btn-ghost" disabled={!filteredAlbums().length} onClick={selectVisible}>{allVisibleSelected() ? "Deselect visible" : "Select visible"}</button>
+                <button type="button" class="btn btn-sm btn-ghost" disabled={!selectedIds().size} onClick={() => setSelectedIds(new Set<number>())}>Clear</button>
+                <button type="button" class="btn btn-sm btn-primary gap-2" disabled={selectedAlbums().length < 2} onClick={() => mergeModalRef?.openMany(selectedAlbums())}>
+                  <FolderInput class="h-4 w-4" /> Merge selected
+                </button>
+              </div>
+            </Show>
+          </div>
+
           {/* Albums Grid */}
           <Show
             when={!albumsQuery.isLoading}
@@ -192,6 +238,9 @@ function AlbumsIndexComponent() {
                       onEdit={handleEdit}
                       onDelete={handleDelete}
                       onMerge={handleMerge}
+                      selecting={selecting()}
+                      selected={selectedIds().has(album.id)}
+                      onSelect={toggleSelected}
                     />
                   )}
                 </For>
@@ -215,6 +264,7 @@ function AlbumsIndexComponent() {
             ref={(el) => (mergeModalRef = el)}
             drivePath={drive.selectedDrive!.path}
             albums={albums()}
+            onMerged={cancelSelection}
           />
         </div>
       </Show>

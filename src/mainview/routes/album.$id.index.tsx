@@ -35,28 +35,11 @@ import {
 } from "@/components/MoveToAlbumModal";
 import { useSelectionStore } from "@/store/selection_store";
 import DialogModal, { type ModalHandle } from "@/components/DialogModal";
-
-interface AlbumSearch {
-  page?: number;
-  limit?: number;
-  search?: string;
-  filter?: "all" | "images" | "videos";
-  sortBy?: "date" | "name" | "size";
-  sortOrder?: "asc" | "desc";
-}
+import { validateAlbumMediaSearch, patchSearch, patchPagedSearch, type AlbumMediaSearch } from "@/lib/catalogSearch";
 
 export const Route = createFileRoute("/album/$id/")({
   component: AlbumDetailComponent,
-  validateSearch: (search: Record<string, unknown>): AlbumSearch => {
-    return {
-      page: Number(search.page) || 0,
-      limit: Number(search.limit) || 100,
-      search: (search.search as string) || "",
-      filter: (search.filter as "all" | "images" | "videos") || "all",
-      sortBy: (search.sortBy as "date" | "name" | "size") || "date",
-      sortOrder: (search.sortOrder as "asc" | "desc") || "desc",
-    };
-  },
+  validateSearch: validateAlbumMediaSearch,
 });
 
 function AlbumDetailComponent() {
@@ -189,41 +172,37 @@ function AlbumDetailComponent() {
 
   const setPage = (newPage: number) => {
     navigate({
-      search: (prev: AlbumSearch) => ({ ...prev, page: newPage }),
+      search: (prev: AlbumMediaSearch) => patchSearch(prev, { page: newPage }),
     });
   };
 
   const handleLimitChange = (newLimit: number) => {
     navigate({
-      search: (prev: AlbumSearch) => ({ ...prev, page: 0, limit: newLimit }),
+      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { limit: newLimit }),
     });
   };
 
   const setSearchQuery = (newSearch: string) => {
     navigate({
-      search: (prev: AlbumSearch) => ({ ...prev, page: 0, search: newSearch }),
+      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { search: newSearch }),
     });
   };
 
   const handleFilterChange = (newFilter: "all" | "images" | "videos") => {
     navigate({
-      search: (prev: AlbumSearch) => ({ ...prev, page: 0, filter: newFilter }),
+      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { filter: newFilter }),
     });
   };
 
   const handleSortByChange = (newSortBy: "date" | "name" | "size") => {
     navigate({
-      search: (prev: AlbumSearch) => ({ ...prev, page: 0, sortBy: newSortBy }),
+      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { sortBy: newSortBy }),
     });
   };
 
   const toggleSortOrder = () => {
     navigate({
-      search: (prev: AlbumSearch) => ({
-        ...prev,
-        page: 0,
-        sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
-      }),
+      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { sortOrder: prev.sortOrder === "asc" ? "desc" : "asc" }),
     });
   };
 

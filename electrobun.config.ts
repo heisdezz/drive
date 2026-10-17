@@ -25,6 +25,7 @@ export default {
     },
     linux: {
       bundleCEF: false,
+      icon: "assets/d-stream.png",
       chromiumFlags: {
         // "ozone-platform-hint": "auto",
         // "disable-gpu": true,

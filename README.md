@@ -28,6 +28,11 @@ On Linux, the release file is a `.tar.gz` archive. Extract it and run the
 `installer` inside. On Windows, extract the release `.zip` and run the setup
 program. On macOS, open the release `.dmg`.
 
+For local Linux builds, `bun run build:stable` also refreshes the matching
+`release/stable/*-Setup/` folder. Run its `installer` only after that build
+finishes; the release script checks that the installer and update archive have
+the same app identifier and build hash.
+
 | Directory | Purpose |
 | --- | --- |
 | `release/<channel>/` | Clearly named installer to distribute |
@@ -43,4 +48,7 @@ The installed app lives under `~/.local/share/io.github.heisdezz.dstream/` on
 Linux. Its `stable/app/` bundle contains the runtime, and `stable/self-extraction/`
 holds an archive Electrobun uses for updates. Earlier builds installed under
 `~/.local/share/reacttailwindvite.electrobun.dev/`; that installation remains
-separate and can be removed after the new app and its settings are checked.
+separate because Electrobun uses the app identifier as the installation key.
+After verifying the current app and its settings, remove that legacy install
+and any old desktop shortcut once. Later installs of the current app use the
+same identifier and update its existing installation.

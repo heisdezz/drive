@@ -2,6 +2,20 @@
 
 D-Stream Desktop is a Solid and Electrobun media library for removable drives.
 
+## Screenshots
+
+![Dashboard showing the selected drive, recent media, and albums](images/dashboard_edit.png)
+
+| Discover | Media Library |
+| --- | --- |
+| ![Discover scan and ignore list](images/discover.png) | ![Media grid with search and filters](images/media%20libary_edit.png) |
+| Albums | Media player |
+| ![Album gallery](images/albums_edit.png) | ![Video player and file details](images/player_edit.png) |
+| Settings | System info |
+| ![Appearance and catalog settings](images/settings.png) | ![Application logs and system information](images/debugger%28system_info%29.png) |
+| Playback diagnostic | |
+| ![Video playback diagnostic](images/test_page_edit.png) | |
+
 ## Run locally
 
 ```bash
@@ -49,6 +63,6 @@ Linux. Its `stable/app/` bundle contains the runtime, and `stable/self-extractio
 holds an archive Electrobun uses for updates. Earlier builds installed under
 `~/.local/share/reacttailwindvite.electrobun.dev/`; that installation remains
 separate because Electrobun uses the app identifier as the installation key.
-After verifying the current app and its settings, remove that legacy install
-and any old desktop shortcut once. Later installs of the current app use the
-same identifier and update its existing installation.
+If you still have that older installation, remove it and its desktop shortcut
+after confirming the current app works. New releases update the installation
+under `io.github.heisdezz.dstream`.

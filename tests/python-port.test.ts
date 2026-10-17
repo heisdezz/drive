@@ -328,6 +328,57 @@ describe("Python scanner update", () => {
 		expect((await snapshot.arrayBuffer()).byteLength).toBeGreaterThan(0);
 	});
 
+	test("mobile sync CRUD requires a write token and keeps files and counts in sync", async () => {
+		const { root, db } = library();
+		const unknownId = (db.prepare("SELECT id FROM albums WHERE name = 'unknown'").get() as { id: number }).id;
+		db.close();
+		const { port, writeToken } = startMobileSync(root, 0, "127.0.0.1");
+		const base = `http://127.0.0.1:${port}`;
+		const auth = { Authorization: `Bearer ${writeToken}` };
+		const postAlbum = (headers: Record<string, string>) => fetch(`${base}/api/albums`, {
+			method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Phone" }),
+		});
+		expect((await postAlbum({})).status).toBe(401);
+		const created = await postAlbum(auth);
+		expect(created.status).toBe(201);
+		const albumId = ((await created.json()) as any).album.id as number;
+		const albums = (await (await fetch(`${base}/api/albums`)).json()) as any;
+		expect(albums.albums.find((album: any) => album.id === albumId).media_count).toBe(0);
+
+		const upload = await fetch(`${base}/api/media?albumId=${albumId}&filename=photo.png`, {
+			method: "POST", headers: { ...auth, "Content-Type": "image/png" }, body: new Uint8Array([137, 80, 78, 71, 1]),
+		});
+		expect(upload.status).toBe(201);
+		const itemId = ((await upload.json()) as any).item.id as number;
+		expect((await (await fetch(`${base}/api/media?albumId=${albumId}`)).json() as any).total).toBe(1);
+		expect((await fetch(`${base}/api/media/${itemId}`)).status).toBe(200);
+		expect((await fetch(`${base}/api/media/${itemId}/details`)).status).toBe(200);
+		expect((await fetch(`${base}/api/media?albumId=${albumId}&filename=../escape.png`, {
+			method: "POST", headers: { ...auth, "Content-Type": "image/png" }, body: new Uint8Array([1]),
+		})).status).toBe(400);
+
+		const move = await fetch(`${base}/api/media/${itemId}`, {
+			method: "PATCH", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ albumId: unknownId }),
+		});
+		expect(move.status).toBe(200);
+		const form = new FormData();
+		form.set("albumId", String(albumId));
+		form.set("file", new File([new Uint8Array([137, 80, 78, 71, 2])], "second.png", { type: "image/png" }));
+		const second = await fetch(`${base}/api/media`, { method: "POST", headers: auth, body: form });
+		expect(second.status).toBe(201);
+		const secondId = ((await second.json()) as any).item.id as number;
+		expect((await fetch(`${base}/api/media/${secondId}`, { method: "DELETE", headers: auth })).status).toBe(200);
+		const renamed = await fetch(`${base}/api/albums/${albumId}`, {
+			method: "PATCH", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ description: "From mobile" }),
+		});
+		expect(renamed.status).toBe(200);
+		expect((await fetch(`${base}/api/albums/${albumId}`, { method: "DELETE", headers: auth })).status).toBe(200);
+		const check = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+		expect(check.prepare("SELECT media_count FROM albums WHERE id = ?").get(unknownId)).toEqual({ media_count: 1 });
+		expect(check.prepare("SELECT id FROM albums WHERE id = ?").get(albumId)).toBeNull();
+		check.close();
+	});
+
 	test("local media server rejects uncataloged paths", async () => {
 		const { root, db } = library();
 		fs.mkdirSync(path.join(root, "albums", "unknown"));

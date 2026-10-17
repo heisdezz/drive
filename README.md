@@ -27,6 +27,36 @@ bun run dev
 
 For frontend hot reload, use `bun run dev:hmr`.
 
+## Mobile LAN API
+
+In Settings, select a scanned drive and start **Local Network Mobile Sync**.
+The server URL and a write token appear there. Read endpoints remain available
+on the local network; send `Authorization: Bearer <token>` for create, update,
+and delete requests. The token changes whenever the server restarts.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/albums` | List albums, including empty albums |
+| `GET` | `/api/albums/:id` | Get one album |
+| `POST` | `/api/albums` | Create an album with JSON `{ "name": "Trip", "description": "..." }` |
+| `PATCH` | `/api/albums/:id` | Change `name` and/or `description` |
+| `DELETE` | `/api/albums/:id` | Remove the album and move its files to Unsorted Media |
+| `DELETE` | `/api/albums/:id?permanent=true` | Delete the album and its media files |
+| `GET` | `/api/media?albumId=1&limit=50&offset=0` | List media with optional `search`, `filter`, `sortBy`, and `sortOrder` |
+| `GET` | `/api/media/:id/details` | Get a media record |
+| `GET` | `/api/media/:id` | Stream the original file, including byte ranges |
+| `GET` | `/api/thumbnail/:id` | Get its thumbnail |
+| `POST` | `/api/media` | Upload a file into an album |
+| `PATCH` | `/api/media/:id` | Move a file using JSON `{ "albumId": 2 }` |
+| `DELETE` | `/api/media/:id` | Delete its record and physical file |
+
+Upload with multipart form data (`file` and `albumId` fields) up to 100 MiB.
+For larger files, stream the raw body to `POST /api/media?albumId=1&filename=clip.mp4`;
+raw uploads support up to 2 GiB. Both forms return `201` with the new `item`.
+The server accepts the same image and video extensions as the desktop scanner.
+Album and media changes return JSON results or a JSON `error` with a non-2xx
+status. Existing `/download/db` and `/api/info` routes remain available.
+
 ## Build a release
 
 ```bash

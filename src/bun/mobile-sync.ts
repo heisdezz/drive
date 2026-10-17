@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createBackup, openReadableDb } from "./database";
 import { getOrGenerateThumbnail } from "./thumbnails";
+import { handleMobileCrud } from "./mobile-crud";
 
 let server: ReturnType<typeof Bun.serve> | null = null;
 let activeDrive = "";
 let activePort = 8080;
+let writeToken = "";
 
 function localIp(): string {
 	for (const addresses of Object.values(os.networkInterfaces())) {
@@ -18,13 +21,13 @@ function localIp(): string {
 }
 
 export function mobileSyncStatus() {
-	return { running: !!server, drivePath: activeDrive, port: activePort, url: server ? `http://${localIp()}:${activePort}` : "" };
+	return { running: !!server, drivePath: activeDrive, port: activePort, url: server ? `http://${localIp()}:${activePort}` : "", writeToken: server ? writeToken : "" };
 }
 
 const cors = {
 	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-	"Access-Control-Allow-Headers": "Range, Content-Type",
+	"Access-Control-Allow-Methods": "GET, HEAD, POST, PATCH, DELETE, OPTIONS",
+	"Access-Control-Allow-Headers": "Range, Content-Type, Authorization, X-File-Name",
 	"Access-Control-Expose-Headers": "Content-Range, Accept-Ranges, Content-Length",
 };
 
@@ -87,9 +90,22 @@ async function safeMediaPath(relativePath: string): Promise<string | null> {
 async function handle(request: Request): Promise<Response> {
 	const head = request.method === "HEAD";
 	if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-	if (request.method !== "GET" && !head) return json({ error: "Method not allowed" }, 405);
 	const route = new URL(request.url).pathname.replace(/\/$/, "") || "/";
 	if (!fs.existsSync(dbPath())) return json({ error: "Library database not found" }, 404, head);
+	if (route === "/api/albums" || route.startsWith("/api/albums/") || route === "/api/media" ||
+		/^\/api\/media\/\d+\/details$/.test(route) ||
+		(/^\/api\/media\/\d+$/.test(route) && ["PATCH", "DELETE"].includes(request.method))) {
+		if (request.method !== "GET" && request.method !== "HEAD") {
+			const supplied = /^Bearer ([a-f0-9]{64})$/i.exec(request.headers.get("authorization") || "")?.[1] || "";
+			const expected = Buffer.from(writeToken);
+			const provided = Buffer.from(supplied);
+			if (!writeToken || provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+				return json({ error: "A valid write token is required." }, 401);
+			}
+		}
+		return handleMobileCrud(request, activeDrive, new URL(request.url));
+	}
+	if (request.method !== "GET" && !head) return json({ error: "Method not allowed" }, 405);
 	if (route === "/" || route === "/api/info" || route === "/api/db/stats") {
 		const db = openReadableDb(dbPath());
 		try {
@@ -134,9 +150,10 @@ export function startMobileSync(drivePath: string, port: number, hostname = "0.0
 	if (!fs.existsSync(path.join(drivePath, "albums", ".media_library.db"))) throw new Error("Select a drive with a scanned library.");
 	server?.stop(true);
 	server = null;
-	activeDrive = drivePath;
+	activeDrive = fs.realpathSync(drivePath);
 	activePort = port;
-	server = Bun.serve({ hostname, port, fetch: request => handle(request).catch(err => json({ error: err.message }, 500)) });
+	writeToken = randomBytes(32).toString("hex");
+	server = Bun.serve({ hostname, port, maxRequestBodySize: 2 * 1024 * 1024 * 1024, fetch: request => handle(request).catch(err => json({ error: err.message }, 500)) });
 	activePort = server.port ?? port;
 	return mobileSyncStatus();
 }
@@ -144,5 +161,6 @@ export function startMobileSync(drivePath: string, port: number, hostname = "0.0
 export function stopMobileSync() {
 	server?.stop(true);
 	server = null;
+	writeToken = "";
 	return mobileSyncStatus();
 }

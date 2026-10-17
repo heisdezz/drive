@@ -283,15 +283,15 @@ export interface MainRPC extends ElectrobunRPCSchema {
 			};
 			startMobileSync: {
 				params: { drivePath: string; port: number };
-				response: { success: boolean; running: boolean; drivePath: string; port: number; url: string; error?: string };
+				response: { success: boolean; running: boolean; drivePath: string; port: number; url: string; writeToken: string; error?: string };
 			};
 			stopMobileSync: {
 				params: undefined;
-				response: { running: boolean; drivePath: string; port: number; url: string };
+				response: { running: boolean; drivePath: string; port: number; url: string; writeToken: string };
 			};
 			getMobileSyncStatus: {
 				params: undefined;
-				response: { running: boolean; drivePath: string; port: number; url: string };
+				response: { running: boolean; drivePath: string; port: number; url: string; writeToken: string };
 			};
 			deleteMediaItems: {
 				params: {

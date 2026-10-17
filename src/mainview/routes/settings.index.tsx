@@ -23,7 +23,7 @@ function SettingsComponent() {
   const drive = useDriveStore();
   const [syncPort, setSyncPort] = createSignal(8080);
   const [syncBusy, setSyncBusy] = createSignal(false);
-  const [syncStatus, setSyncStatus] = createSignal<{ running: boolean; drivePath: string; port: number; url: string } | null>(null);
+  const [syncStatus, setSyncStatus] = createSignal<{ running: boolean; drivePath: string; port: number; url: string; writeToken: string } | null>(null);
   const [syncError, setSyncError] = createSignal("");
 
   onMount(async () => {
@@ -502,7 +502,7 @@ function SettingsComponent() {
 
         <div class="card bg-base-200/40 border border-base-200 shadow-xl rounded-2xl p-6 space-y-4">
           <h3 class="text-sm font-bold text-base-content flex items-center gap-2"><Database class="w-4 h-4 text-primary" /> Local Network Mobile Sync</h3>
-          <p class="text-xs text-base-content/60">Share the selected drive's catalog, media, and thumbnails with devices on your local network. Anyone who can reach this port can access them while the server is on.</p>
+          <p class="text-xs text-base-content/60">Share the selected drive's catalog, media, and thumbnails with devices on your local network. Reads are available to anyone who can reach this port; changes require the write token below.</p>
           <div class="flex flex-wrap gap-3 items-center">
             <label class="text-xs font-bold" for="mobile-sync-port">Port</label>
             <input id="mobile-sync-port" type="number" min="1" max="65535" value={syncPort()} disabled={syncStatus()?.running} onInput={e => setSyncPort(Number(e.currentTarget.value))} class="input input-bordered input-sm w-28" />
@@ -511,6 +511,11 @@ function SettingsComponent() {
           <Show when={syncStatus()?.running}>
             <p role="status" class="text-xs">Active on {syncStatus()?.url} for {syncStatus()?.drivePath}</p>
             <a class="link link-primary text-xs" href={`${syncStatus()?.url}/download/db`} target="_blank" rel="noreferrer">Download URL: {syncStatus()?.url}/download/db</a>
+            <div class="space-y-1">
+              <label for="mobile-write-token" class="block text-xs font-bold">Write token for the mobile app</label>
+              <input id="mobile-write-token" readOnly value={syncStatus()?.writeToken || ""} class="input input-bordered input-sm w-full font-mono text-xs" onFocus={event => event.currentTarget.select()} />
+              <p class="text-xs text-base-content/60">Send as <code>Authorization: Bearer &lt;token&gt;</code>. The token changes each time the server starts.</p>
+            </div>
           </Show>
           <Show when={syncError()}><p role="alert" class="text-xs text-error">{syncError()}</p></Show>
         </div>

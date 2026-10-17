@@ -2,6 +2,8 @@
 
 D-Stream Desktop is a Solid and Electrobun media library for removable drives.
 
+Mobile app: [D-Stream](https://github.com/heisdezz/d-stream).
+
 ## Screenshots
 
 ![Dashboard showing the selected drive, recent media, and albums](images/dashboard_edit.png)

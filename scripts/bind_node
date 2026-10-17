@@ -1,0 +1,4 @@
+rm -rf node_modules
+mkdir -p node_modules ~/.cache/nm/d-stream-desktop
+sudo mount --bind ~/.cache/nm/d-stream-desktop node_modules
+bun install

@@ -48,7 +48,7 @@ const rootElement = document.getElementById("root")!;
 render(
   () => (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <RouterProvider router={router} scrollRestoration />
     </QueryClientProvider>
   ),
   rootElement,

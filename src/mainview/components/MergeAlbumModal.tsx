@@ -27,9 +27,16 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
   const [targetId, setTargetId] = createSignal<number | null>(null);
   const [targetSearch, setTargetSearch] = createSignal("");
   const [error, setError] = createSignal("");
-  const targets = createMemo(() => batchMode()
-    ? sources().filter((album) => !sources().some((item) => item.name === "unknown") || album.name === "unknown")
-    : props.albums.filter((album) => album.id !== sources()[0]?.id));
+  const targets = createMemo(() => {
+    if (!batchMode()) return props.albums.filter((album) => album.id !== sources()[0]?.id);
+    const mustKeepUnsorted = sources().some((album) => album.name === "unknown");
+    const available = mustKeepUnsorted
+      ? props.albums.filter((album) => album.name === "unknown")
+      : props.albums;
+    return [...available].sort((a, b) =>
+      a.name === "unknown" ? -1 : b.name === "unknown" ? 1 : a.name.localeCompare(b.name),
+    );
+  });
   const filteredTargets = createMemo(() => {
     const query = targetSearch().trim().toLocaleLowerCase();
     return query
@@ -37,7 +44,6 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
       : targets();
   });
   const selectedTarget = createMemo(() => targets().find((album) => album.id === targetId()));
-  const visibleTargets = createMemo(() => filteredTargets().slice(0, 100));
   let searchRef: HTMLInputElement | undefined;
 
   const open = (albums: Album[], batch: boolean) => {
@@ -87,7 +93,7 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
   return (
     <DialogModal
       ref={(el) => (modalRef = el)}
-      title="Merge album"
+      title={batchMode() ? "Merge albums" : "Merge album"}
       actions={
         <>
           <button type="button" class="btn btn-sm btn-ghost" disabled={mutation.isPending} onClick={() => modalRef?.close()}>Cancel</button>
@@ -109,11 +115,11 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
       <div class="space-y-4 text-left text-base-content">
         <p class="text-sm leading-relaxed">
           <Show when={batchMode()} fallback={<>Move {sources()[0]?.media_count ?? 0} items from <strong>{sources()[0] && displayName(sources()[0])}</strong> into another album. The source album will be removed; any child albums will remain.</>}>
-            Merge {sources().length} selected albums. Choose which one to keep. The other {sources().length - 1} album{sources().length === 2 ? "" : "s"} will be removed; their items will move into the destination.
+            Move the items from {sources().length} selected albums into a destination album. Select an existing album or one of the selected albums to keep; the other selected albums will be removed.
           </Show>
         </p>
         <div class="space-y-2">
-          <label for="merge-album-search" class="block text-xs font-bold">{batchMode() ? "Album to keep" : "Destination album"}</label>
+          <label for="merge-album-search" class="block text-xs font-bold">Destination album</label>
           <div class="relative">
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-base-content/50" />
             <input
@@ -138,11 +144,14 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
             </Show>
           </div>
           <Show when={selectedTarget()}>
-            {(album) => <p class="text-xs text-base-content/75">Selected: <strong class="text-base-content">{displayName(album())}</strong></p>}
+            {(album) => <p class="text-xs text-base-content/75">Destination: <strong class="text-base-content">{displayName(album())}</strong><Show when={batchMode()}> · {sources().length - Number(sources().some((source) => source.id === album().id))} selected albums will be removed</Show></p>}
+          </Show>
+          <Show when={batchMode() && sources().some((album) => album.name === "unknown")}>
+            <p class="text-xs text-base-content/70">Unsorted Media must be kept when it is selected.</p>
           </Show>
           <div role="radiogroup" aria-label="Destination album" class="max-h-56 overflow-y-auto rounded-lg border border-base-300 bg-base-200/50 p-1">
-            <Show when={visibleTargets().length > 0} fallback={<p class="px-3 py-5 text-center text-xs text-base-content/70">No albums match your search.</p>}>
-              <For each={visibleTargets()}>
+            <Show when={filteredTargets().length > 0} fallback={<p class="px-3 py-5 text-center text-xs text-base-content/70">No albums match your search.</p>}>
+              <For each={filteredTargets()}>
                 {(album) => (
                   <label class="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-base-200 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary">
                     <input
@@ -161,9 +170,6 @@ export function MergeAlbumModal(props: MergeAlbumModalProps) {
               </For>
             </Show>
           </div>
-          <Show when={filteredTargets().length > visibleTargets().length}>
-            <p class="text-xs text-base-content/70">Showing the first {visibleTargets().length} of {filteredTargets().length} albums. Search to narrow the list.</p>
-          </Show>
         </div>
         <p class="text-xs text-base-content/70">Files with the same name get a numbered suffix. Existing destination files stay in place.</p>
         <Show when={error()}><p role="alert" class="rounded-lg border border-error/30 bg-error/10 p-3 text-xs text-error">{error()}</p></Show>

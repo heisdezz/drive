@@ -464,6 +464,17 @@ function AlbumDetailComponent() {
                         item={item}
                         drivePath={drive.selectedDrive?.path ?? ""}
                         albumId={albumId()}
+                        selectable
+                        onMove={(itemId) => {
+                          selection.start();
+                          selection.selectMany([itemId]);
+                          moveModalRef?.open([itemId]);
+                        }}
+                        onDelete={(itemId) => {
+                          selection.start();
+                          selection.selectMany([itemId]);
+                          deleteModalRef?.open();
+                        }}
                       />
                     )}
                   </For>

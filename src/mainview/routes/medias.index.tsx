@@ -335,6 +335,17 @@ function MediasComponent() {
                     <MediaCard
                       item={item}
                       drivePath={drive.selectedDrive?.path ?? ""}
+                      selectable
+                      onMove={(itemId) => {
+                        selection.start();
+                        selection.selectMany([itemId]);
+                        void handleOpenMoveModal();
+                      }}
+                      onDelete={(itemId) => {
+                        selection.start();
+                        selection.selectMany([itemId]);
+                        deleteModalRef?.open();
+                      }}
                     />
                   )}
                 </For>

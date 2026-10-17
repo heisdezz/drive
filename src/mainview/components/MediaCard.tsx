@@ -1,13 +1,18 @@
 import { createSignal, onMount, onCleanup, Show } from "solid-js";
-import { Link } from "@tanstack/solid-router";
+import { Link, useNavigate } from "@tanstack/solid-router";
 import {
   Image as ImageIcon,
   Film as FilmIcon,
   Play,
   Folder,
+  ExternalLink,
+  CheckSquare,
+  FolderInput,
+  Trash2,
 } from "lucide-solid";
 import { useSelectionStore } from "@/store/selection_store";
 import { useSettingsStore } from "@/store/settings_store";
+import { AppContextMenu } from "@/components/AppContextMenu";
 
 export interface MediaItem {
   id: number;
@@ -29,9 +34,13 @@ interface MediaCardProps {
   drivePath: string;
   albumId?: number;
   onClick?: (e: MouseEvent) => void;
+  selectable?: boolean;
+  onMove?: (itemId: number) => void;
+  onDelete?: (itemId: number) => void;
 }
 
 export function MediaCard(props: MediaCardProps) {
+  const navigate = useNavigate();
   const settings = useSettingsStore();
   const selection = useSelectionStore();
   const [hasError, setHasError] = createSignal(false);
@@ -76,7 +85,48 @@ export function MediaCard(props: MediaCardProps) {
       props.onClick(e);
     }
   };
+  const selectItem = () => {
+    if (!selection.isSelecting) {
+      selection.start();
+      selection.selectMany([props.item.id]);
+    } else {
+      selection.toggle(props.item.id);
+    }
+  };
   return (
+    <AppContextMenu
+      label={`Actions for ${fileName()}`}
+      actions={[
+        {
+          label: "Open media",
+          icon: <ExternalLink class="h-4 w-4" />,
+          onSelect: () => navigate({ to: "/item/$id", params: { id: String(props.item.id) }, search: props.albumId ? { albumId: props.albumId } : undefined }),
+        },
+        ...(props.item.album_id || props.albumId ? [{
+          label: "Open album",
+          icon: <Folder class="h-4 w-4" />,
+          onSelect: () => navigate({ to: "/album/$id", params: { id: String(props.albumId ?? props.item.album_id) } }),
+        }] : []),
+        ...(props.selectable ? [{
+          label: isSelected() ? "Deselect media" : "Select media",
+          icon: <CheckSquare class="h-4 w-4" />,
+          onSelect: selectItem,
+          separatorBefore: true,
+        }] : []),
+        ...(props.onMove ? [{
+          label: "Move to album",
+          icon: <FolderInput class="h-4 w-4" />,
+          onSelect: () => props.onMove?.(props.item.id),
+        }] : []),
+        ...(props.onDelete ? [{
+          label: "Delete media",
+          icon: <Trash2 class="h-4 w-4" />,
+          onSelect: () => props.onDelete?.(props.item.id),
+          destructive: true,
+          separatorBefore: true,
+        }] : []),
+      ]}
+      trigger={
     <Link
       to="/item/$id"
       params={{ id: String(props.item.id) }}
@@ -170,5 +220,7 @@ export function MediaCard(props: MediaCardProps) {
         </div>
       </div>
     </Link>
+      }
+    />
   );
 }

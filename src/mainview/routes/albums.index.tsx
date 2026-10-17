@@ -147,34 +147,32 @@ function AlbumsIndexComponent() {
         when={drive.selectedDrive!.status !== "unmounted"}
         fallback={<DriveUnmounted drive={drive.selectedDrive!} />}
       >
-        <div class="space-y-6 max-w-[1600px]">
+        <div class="max-w-[1600px] space-y-3">
           {/* Drive Header */}
-          <div class="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div class="flex items-center gap-4">
-              <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
-                <Library class="w-6 h-6 text-primary-content" />
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-base-200 bg-gradient-to-br from-base-200/60 to-base-300/40 px-4 py-3 shadow-lg">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-primary to-secondary shadow-md shadow-primary/15">
+                <Library class="h-5 w-5 text-primary-content" />
               </div>
-              <div>
-                <h2 class="text-xl font-black text-base-content leading-tight">
+              <div class="min-w-0">
+                <h2 class="text-lg font-black leading-tight text-base-content">
                   Albums Gallery
                 </h2>
-                <span class="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider">
+                <span class="block truncate font-mono text-[10px] font-bold uppercase tracking-wider text-base-content/50">
                   {drive.selectedDrive!.name} · {albums().length} Total Albums
                 </span>
+                <Show when={validationMessage()}><span role="status" class="block text-xs text-base-content/70">{validationMessage()}</span></Show>
               </div>
             </div>
-            <button onClick={validateFiles} disabled={validating()} class="btn btn-sm btn-outline gap-1.5 ml-auto md:ml-0">
-              <RotateCw class={`w-3.5 h-3.5 ${validating() ? "animate-spin" : ""}`} /> Validate Files
-            </button>
-            <button
-              onClick={() => createModalRef?.open()}
-              class="btn btn-sm btn-primary font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 ml-auto md:ml-0"
-            >
-              <FolderPlus class="w-3.5 h-3.5" /> Create Album
-            </button>
+            <div class="ml-auto flex items-center gap-2">
+              <button onClick={validateFiles} disabled={validating()} class="btn btn-sm btn-ghost gap-1.5" title="Check for missing files">
+                <RotateCw class={`h-3.5 w-3.5 ${validating() ? "animate-spin" : ""}`} /> Validate
+              </button>
+              <button onClick={() => createModalRef?.open()} class="btn btn-sm btn-primary gap-1.5 font-bold">
+                <FolderPlus class="h-3.5 w-3.5" /> Create Album
+              </button>
+            </div>
           </div>
-
-          <Show when={validationMessage()}><p role="status" class="text-xs text-base-content/70">{validationMessage()}</p></Show>
 
           {/* Filter & Sort Bar */}
           <AlbumsFilterBar
@@ -182,23 +180,21 @@ function AlbumsIndexComponent() {
             onSearchChange={setSearchQuery}
             sortBy={sortBy()}
             onSortChange={setSortBy}
-          />
-
-          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-base-200 bg-base-200/60 p-3">
-            <button type="button" class="btn btn-sm btn-outline gap-2" aria-pressed={selecting()} onClick={() => selecting() ? cancelSelection() : setSelecting(true)}>
-              <CheckSquare class="h-4 w-4" /> {selecting() ? "Cancel selection" : "Select albums"}
-            </button>
-            <Show when={selecting()}>
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs font-medium tabular-nums text-base-content/70" aria-live="polite">{selectedAlbums().length} selected</span>
-                <button type="button" class="btn btn-sm btn-ghost" disabled={!filteredAlbums().length} onClick={selectVisible}>{allVisibleSelected() ? "Deselect visible" : "Select visible"}</button>
-                <button type="button" class="btn btn-sm btn-ghost" disabled={!selectedIds().size} onClick={() => setSelectedIds(new Set<number>())}>Clear</button>
-                <button type="button" class="btn btn-sm btn-primary gap-2" disabled={selectedAlbums().length < 2} onClick={() => mergeModalRef?.openMany(selectedAlbums())}>
-                  <FolderInput class="h-4 w-4" /> Merge selected
+            actions={
+              <div class="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+                <button type="button" class="btn btn-sm btn-outline gap-1.5" aria-pressed={selecting()} onClick={() => selecting() ? cancelSelection() : setSelecting(true)}>
+                  <CheckSquare class="h-4 w-4" /> {selecting() ? "Cancel" : "Select"}
                 </button>
+                <Show when={selecting()}>
+                  <span class="min-w-8 text-center text-xs font-medium tabular-nums text-base-content/70" aria-live="polite">{selectedAlbums().length} selected</span>
+                  <button type="button" class="btn btn-sm btn-ghost" disabled={!filteredAlbums().length} onClick={selectVisible}>{allVisibleSelected() ? "Deselect visible" : "Select visible"}</button>
+                  <button type="button" class="btn btn-sm btn-primary gap-1.5" disabled={selectedAlbums().length < 2} onClick={() => mergeModalRef?.openMany(selectedAlbums())}>
+                    <FolderInput class="h-4 w-4" /> Merge
+                  </button>
+                </Show>
               </div>
-            </Show>
-          </div>
+            }
+          />
 
           {/* Albums Grid */}
           <Show

@@ -17,7 +17,6 @@ import {
   Loader2,
   Image as ImageIcon,
   ChevronLeft,
-  Calendar,
   FolderOpen,
   FolderPlus,
   RotateCw,
@@ -35,7 +34,12 @@ import {
 } from "@/components/MoveToAlbumModal";
 import { useSelectionStore } from "@/store/selection_store";
 import DialogModal, { type ModalHandle } from "@/components/DialogModal";
-import { validateAlbumMediaSearch, patchSearch, patchPagedSearch, type AlbumMediaSearch } from "@/lib/catalogSearch";
+import {
+  validateAlbumMediaSearch,
+  patchSearch,
+  patchPagedSearch,
+  type AlbumMediaSearch,
+} from "@/lib/catalogSearch";
 
 export const Route = createFileRoute("/album/$id/")({
   component: AlbumDetailComponent,
@@ -52,18 +56,31 @@ function AlbumDetailComponent() {
   const selection = useSelectionStore();
   const [validating, setValidating] = createSignal(false);
   const [validationMessage, setValidationMessage] = createSignal("");
+  const [validationError, setValidationError] = createSignal(false);
 
   const validateFiles = async () => {
     const drivePath = drive.selectedDrive?.path;
-    if (!drivePath) return;
+    const id = albumId();
+    if (!drivePath || !Number.isSafeInteger(id)) return;
+    setValidationError(false);
+    setValidationMessage("Checking album files…");
     setValidating(true);
     try {
-      const result = await rpc.request.validateAlbumFiles({ drivePath, albumId: albumId() });
+      const result = await rpc.request.validateAlbumFiles({
+        drivePath,
+        albumId: id,
+      });
       if (!result.success) throw new Error(result.error || "Validation failed");
-      setValidationMessage(`Checked ${result.checked} files; removed ${result.removed} missing entries.`);
-      await queryClient.invalidateQueries({ queryKey: ["album-media", drivePath, albumId()] });
-      await queryClient.invalidateQueries({ queryKey: ["albums", drivePath] });
+      setValidationMessage(
+        `Checked ${result.checked} files; removed ${result.removed} missing entries.`,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["album-media", drivePath, id] }),
+        queryClient.invalidateQueries({ queryKey: ["album", drivePath, id] }),
+        queryClient.invalidateQueries({ queryKey: ["albums", drivePath] }),
+      ]);
     } catch (err: any) {
+      setValidationError(true);
       setValidationMessage(err.message || "Validation failed");
     } finally {
       setValidating(false);
@@ -178,31 +195,38 @@ function AlbumDetailComponent() {
 
   const handleLimitChange = (newLimit: number) => {
     navigate({
-      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { limit: newLimit }),
+      search: (prev: AlbumMediaSearch) =>
+        patchPagedSearch(prev, { limit: newLimit }),
     });
   };
 
   const setSearchQuery = (newSearch: string) => {
     navigate({
-      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { search: newSearch }),
+      search: (prev: AlbumMediaSearch) =>
+        patchPagedSearch(prev, { search: newSearch }),
     });
   };
 
   const handleFilterChange = (newFilter: "all" | "images" | "videos") => {
     navigate({
-      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { filter: newFilter }),
+      search: (prev: AlbumMediaSearch) =>
+        patchPagedSearch(prev, { filter: newFilter }),
     });
   };
 
   const handleSortByChange = (newSortBy: "date" | "name" | "size") => {
     navigate({
-      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { sortBy: newSortBy }),
+      search: (prev: AlbumMediaSearch) =>
+        patchPagedSearch(prev, { sortBy: newSortBy }),
     });
   };
 
   const toggleSortOrder = () => {
     navigate({
-      search: (prev: AlbumMediaSearch) => patchPagedSearch(prev, { sortOrder: prev.sortOrder === "asc" ? "desc" : "asc" }),
+      search: (prev: AlbumMediaSearch) =>
+        patchPagedSearch(prev, {
+          sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
+        }),
     });
   };
 
@@ -309,186 +333,101 @@ function AlbumDetailComponent() {
             </div>
           }
         >
-          <div class="space-y-6 max-w-[1600px]">
-            {/* Back */}
-            <div class="flex items-center gap-2">
+          <div class="max-w-[1600px] space-y-3">
+            <section class="flex flex-wrap items-center gap-3 rounded-xl border border-base-200 bg-gradient-to-br from-base-200/60 to-base-300/40 px-4 py-3 shadow-lg">
               <button
-                onClick={() =>
-                  window.history.length > 1
-                    ? window.history.back()
-                    : navigate({ to: "/albums" })
-                }
-                class="btn btn-sm btn-ghost gap-1.5 font-bold text-xs text-base-content/60 hover:text-base-content rounded-lg transition-colors cursor-pointer"
+                type="button"
+                onClick={() => window.history.length > 1 ? window.history.back() : navigate({ to: "/albums" })}
+                class="btn btn-sm btn-ghost btn-square shrink-0"
+                aria-label="Back to albums"
+                title="Back to albums"
               >
-                <ChevronLeft class="w-3.5 h-3.5" /> Back
+                <ChevronLeft class="h-4 w-4" />
               </button>
-            </div>
-
-            {/* Album Header */}
-            <div class="p-6 rounded-2xl bg-gradient-to-br from-base-200/60 to-base-300/40 border border-base-200 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-20 bg-base-200">
-              <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/15 flex-shrink-0">
-                  <FolderOpen class="w-6 h-6 text-primary-content" />
-                </div>
-                <div>
-                  <h2 class="text-xl font-black text-base-content leading-tight">
-                    {album()?.name === "unknown"
-                      ? "Unsorted Media"
-                      : album()?.name || "Loading Album..."}
-                  </h2>
-                  <span class="text-[10px] font-mono text-base-content/40 uppercase font-bold tracking-wider block mt-0.5">
-                    {album()?.relative_path} · {totalItems()} items
-                  </span>
-                </div>
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-primary to-secondary shadow-md shadow-primary/15">
+                <FolderOpen class="h-5 w-5 text-primary-content" />
               </div>
-
-              <div class="flex items-center gap-3 ml-auto md:ml-0">
-                <button onClick={validateFiles} disabled={validating()} class="btn btn-sm btn-outline gap-1.5">
-                  <RotateCw class={`w-3.5 h-3.5 ${validating() ? "animate-spin" : ""}`} /> Validate Files
-                </button>
-                <Show when={album()}>
-                  <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-base-100 border border-base-300 text-[10px] text-base-content/60 font-mono">
-                    <Calendar class="w-3.5 h-3.5 text-base-content/40" />
-                    <span>
-                      Indexed:{" "}
-                      {new Date(album()!.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
+              <div class="min-w-0 flex-1">
+                <h2 class="truncate text-lg font-black leading-tight text-base-content" title={album()?.name}>
+                  {album()?.name === "unknown" ? "Unsorted Media" : album()?.name || "Loading Album..."}
+                </h2>
+                <span class="block truncate font-mono text-[10px] font-bold uppercase tracking-wider text-base-content/50" title={album()?.relative_path}>
+                  {album()?.relative_path} · {totalItems()} items
+                </span>
+                <Show when={validationMessage()}>
+                  <span role={validationError() ? "alert" : "status"} class={`block text-xs ${validationError() ? "text-error" : "text-base-content/70"}`}>{validationMessage()}</span>
                 </Show>
-
-                {/* Selection controls */}
+              </div>
+              <div class="ml-auto flex flex-wrap items-center gap-1.5">
+                <button type="button" onClick={validateFiles} disabled={validating()} class="btn btn-sm btn-ghost gap-1.5" title="Check this album for missing files">
+                  <RotateCw class={`h-3.5 w-3.5 ${validating() ? "animate-spin" : ""}`} />
+                  {validating() ? "Checking…" : "Validate"}
+                </button>
                 <Show when={selection.isSelecting && mediaItems().length > 0}>
                   <button
-                    onClick={() => {
-                      if (allSelected()) {
-                        selection.deselectMany(mediaItems().map((i) => i.id));
-                      } else {
-                        selection.selectMany(mediaItems().map((i) => i.id));
-                      }
-                    }}
-                    class="btn btn-sm btn-outline border-base-300 text-base-content/80 font-bold hover:bg-base-100 cursor-pointer"
+                    type="button"
+                    onClick={() => allSelected() ? selection.deselectMany(mediaItems().map((item) => item.id)) : selection.selectMany(mediaItems().map((item) => item.id))}
+                    class="btn btn-sm btn-ghost"
                   >
-                    {allSelected() ? "Deselect All" : "Select All"}
+                    {allSelected() ? "Deselect page" : "Select page"}
                   </button>
                 </Show>
-
                 <button
-                  onClick={() =>
-                    selection.isSelecting
-                      ? selection.cancel()
-                      : selection.start()
-                  }
-                  class={`btn btn-sm font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${
-                    selection.isSelecting
-                      ? "btn-secondary text-secondary-content"
-                      : "btn-outline border-base-300 text-base-content/80"
-                  }`}
+                  type="button"
+                  onClick={() => selection.isSelecting ? selection.cancel() : selection.start()}
+                  class={`btn btn-sm ${selection.isSelecting ? "btn-secondary" : "btn-outline"}`}
+                  aria-pressed={selection.isSelecting}
                 >
-                  {selection.isSelecting ? "Cancel" : "Select Items"}
+                  {selection.isSelecting ? "Cancel" : "Select items"}
                 </button>
               </div>
-            </div>
+            </section>
 
-            <Show when={validationMessage()}><p role="status" class="text-xs text-base-content/70">{validationMessage()}</p></Show>
-
-            {/* Filter, Search & Sort Bar */}
-            <div class="border border-base-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-              <div class="w-full md:max-w-xs">
+            <div class="flex flex-wrap items-center gap-2 rounded-xl border border-base-200 bg-base-200/70 p-2.5">
+              <div class="min-w-48 flex-1">
                 <SearchBar value={search().search} onChange={setSearchQuery} />
               </div>
-
-              <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                <div class="tabs tabs-boxed bg-base-300 border border-base-200/50 p-0.5">
-                  <button
-                    onClick={() => handleFilterChange("all")}
-                    class={`tab tab-sm font-bold rounded-lg ${search().filter === "all" || !search().filter ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => handleFilterChange("images")}
-                    class={`tab tab-sm font-bold rounded-lg ${search().filter === "images" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
-                  >
-                    Photos
-                  </button>
-                  <button
-                    onClick={() => handleFilterChange("videos")}
-                    class={`tab tab-sm font-bold rounded-lg ${search().filter === "videos" ? "tab-active text-base-content bg-base-100" : "text-base-content/60"}`}
-                  >
-                    Videos
-                  </button>
-                </div>
-
-                <div class="flex items-center gap-1.5">
-                  <span class="text-xs text-base-content/60 font-semibold">
-                    Sort:
-                  </span>
-                  <select
-                    value={search().sortBy || "date"}
-                    onChange={(e) =>
-                      handleSortByChange(
-                        e.currentTarget.value as "date" | "name" | "size",
-                      )
-                    }
-                    class="select select-bordered select-sm text-xs bg-base-100/60 border-base-300 text-base-content/80 rounded-lg focus:outline-none focus:border-primary/60 cursor-pointer"
-                  >
-                    <option value="date">Date Added</option>
-                    <option value="name">File Name</option>
-                    <option value="size">File Size</option>
-                  </select>
-                </div>
-
-                <button
-                  onClick={toggleSortOrder}
-                  class="btn btn-sm btn-outline border-base-300 text-base-content/80 hover:bg-base-100 px-2 cursor-pointer font-bold flex items-center gap-1"
-                  title={
-                    search().sortOrder === "asc"
-                      ? "Ascending order"
-                      : "Descending order"
-                  }
-                >
-                  {search().sortOrder === "asc" ? (
-                    <span class="text-xs">ASC ↑</span>
-                  ) : (
-                    <span class="text-xs">DESC ↓</span>
-                  )}
-                </button>
+              <div class="tabs tabs-boxed border border-base-200/50 bg-base-300 p-0.5" aria-label="Media type">
+                <button type="button" onClick={() => handleFilterChange("all")} class={`tab tab-sm rounded-lg font-bold ${search().filter === "all" || !search().filter ? "tab-active" : "text-base-content/60"}`}>All</button>
+                <button type="button" onClick={() => handleFilterChange("images")} class={`tab tab-sm rounded-lg font-bold ${search().filter === "images" ? "tab-active" : "text-base-content/60"}`}>Photos</button>
+                <button type="button" onClick={() => handleFilterChange("videos")} class={`tab tab-sm rounded-lg font-bold ${search().filter === "videos" ? "tab-active" : "text-base-content/60"}`}>Videos</button>
               </div>
-            </div>
-
-            {/* Control Bar */}
-            <div class="flex justify-between items-center gap-2 bg-base-300/50 border border-base-200 px-4 py-2.5 rounded-xl shadow-md">
-              <button
-                onClick={handleRefresh}
-                disabled={loading()}
-                class="btn btn-xs btn-outline border-base-300 text-base-content/80 gap-1.5 font-bold hover:bg-base-100 cursor-pointer"
+              <select
+                aria-label="Sort media by"
+                value={search().sortBy || "date"}
+                onChange={(event) => handleSortByChange(event.currentTarget.value as "date" | "name" | "size")}
+                class="select select-bordered select-xs rounded-lg border-base-300 bg-base-100/60 text-xs text-base-content focus:border-primary/60 focus:outline-none"
               >
-                <RotateCw
-                  class={`w-3 h-3 ${loading() ? "animate-spin" : ""}`}
-                />
-                Refresh
+                <option value="date">Date added</option>
+                <option value="name">File name</option>
+                <option value="size">File size</option>
+              </select>
+              <button
+                type="button"
+                onClick={toggleSortOrder}
+                class="btn btn-sm btn-ghost px-2 text-xs"
+                aria-label={search().sortOrder === "asc" ? "Sort ascending" : "Sort descending"}
+                title={search().sortOrder === "asc" ? "Ascending order" : "Descending order"}
+              >
+                {search().sortOrder === "asc" ? "ASC ↑" : "DESC ↓"}
               </button>
-
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-base-content/60 font-medium">
-                  Items per page:
-                </span>
+              <button type="button" onClick={handleRefresh} disabled={loading()} class="btn btn-sm btn-ghost btn-square" aria-label="Refresh album" title="Refresh album">
+                <RotateCw class={`h-3.5 w-3.5 ${loading() ? "animate-spin" : ""}`} />
+              </button>
+              <label class="flex items-center gap-1.5 text-xs text-base-content/60">
+                <span class="sr-only">Items per page</span>
                 <select
+                  aria-label="Items per page"
                   value={search().limit || 100}
-                  onChange={(e) =>
-                    handleLimitChange(Number(e.currentTarget.value))
-                  }
-                  class="select select-bordered select-xs text-xs rounded-lg bg-base-100/60 border-base-300 text-base-content/80 focus:outline-none focus:border-primary/60 cursor-pointer"
+                  onChange={(event) => handleLimitChange(Number(event.currentTarget.value))}
+                  class="select select-bordered select-xs rounded-lg border-base-300 bg-base-100/60 text-xs text-base-content focus:border-primary/60 focus:outline-none"
+                  title="Items per page"
                 >
-                  <For
-                    each={[
-                      10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640,
-                    ]}
-                  >
-                    {(val) => <option value={val}>{val}</option>}
+                  <For each={[10, 20, 40, 80, 100, 160, 240, 320, 400, 480, 560, 640]}>
+                    {(value) => <option value={value}>{value} per page</option>}
                   </For>
                 </select>
-              </div>
+              </label>
             </div>
 
             {/* Media Grid */}

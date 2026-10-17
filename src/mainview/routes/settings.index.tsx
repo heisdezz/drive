@@ -25,14 +25,32 @@ function SettingsComponent() {
   const [syncBusy, setSyncBusy] = createSignal(false);
   const [syncStatus, setSyncStatus] = createSignal<{ running: boolean; drivePath: string; port: number; url: string; writeToken: string } | null>(null);
   const [syncError, setSyncError] = createSignal("");
+  const [tokenDraft, setTokenDraft] = createSignal("");
+  const [tokenSaving, setTokenSaving] = createSignal(false);
+  const [tokenMessage, setTokenMessage] = createSignal("");
 
   onMount(async () => {
     try {
       const status = await rpc.request.getMobileSyncStatus();
       setSyncStatus(status);
       setSyncPort(status.port);
+      setTokenDraft(status.writeToken);
     } catch (err: any) { setSyncError(err.message); }
   });
+
+  const saveWriteToken = async () => {
+    setTokenSaving(true);
+    setSyncError("");
+    setTokenMessage("");
+    try {
+      const result = await rpc.request.setMobileSyncWriteToken({ token: tokenDraft() });
+      if (!result.success) throw new Error(result.error);
+      setSyncStatus(result);
+      setTokenDraft(result.writeToken);
+      setTokenMessage("Token saved. The server accepts it immediately.");
+    } catch (err: any) { setSyncError(err.message || "Could not save token."); }
+    finally { setTokenSaving(false); }
+  };
 
   const toggleMobileSync = async () => {
     setSyncBusy(true);
@@ -41,6 +59,12 @@ function SettingsComponent() {
       if (syncStatus()?.running) {
         setSyncStatus(await rpc.request.stopMobileSync());
       } else {
+        if (tokenDraft().trim() && tokenDraft().trim() !== syncStatus()?.writeToken) {
+          const saved = await rpc.request.setMobileSyncWriteToken({ token: tokenDraft() });
+          if (!saved.success) throw new Error(saved.error);
+          setSyncStatus(saved);
+          setTokenDraft(saved.writeToken);
+        }
         const drivePath = drive.selectedDrive?.path;
         if (!drivePath) throw new Error("Select a scanned drive first.");
         const result = await rpc.request.startMobileSync({ drivePath, port: syncPort() });
@@ -508,14 +532,18 @@ function SettingsComponent() {
             <input id="mobile-sync-port" type="number" min="1" max="65535" value={syncPort()} disabled={syncStatus()?.running} onInput={e => setSyncPort(Number(e.currentTarget.value))} class="input input-bordered input-sm w-28" />
             <button onClick={toggleMobileSync} disabled={syncBusy()} class="btn btn-sm btn-primary">{syncStatus()?.running ? "Stop Server" : "Start Server"}</button>
           </div>
+          <div class="space-y-2">
+            <label for="mobile-write-token" class="block text-xs font-bold">Write token for the mobile app</label>
+            <div class="flex flex-wrap gap-2">
+              <input id="mobile-write-token" type="text" autocomplete="off" spellcheck={false} value={tokenDraft()} onInput={event => { setTokenDraft(event.currentTarget.value); setTokenMessage(""); }} class="input input-bordered input-sm min-w-0 flex-1 font-mono text-xs" />
+              <button type="button" onClick={saveWriteToken} disabled={tokenSaving() || !tokenDraft().trim() || tokenDraft().trim() === syncStatus()?.writeToken} class="btn btn-sm btn-outline">{tokenSaving() ? "Saving…" : "Save token"}</button>
+            </div>
+            <p class="text-xs text-base-content/60">Use any nonempty length with printable characters. Send it as <code>Authorization: Bearer &lt;token&gt;</code>. It is saved on this computer and can be changed while the server runs.</p>
+            <Show when={tokenMessage()}><p role="status" class="text-xs text-success">{tokenMessage()}</p></Show>
+          </div>
           <Show when={syncStatus()?.running}>
             <p role="status" class="text-xs">Active on {syncStatus()?.url} for {syncStatus()?.drivePath}</p>
             <a class="link link-primary text-xs" href={`${syncStatus()?.url}/download/db`} target="_blank" rel="noreferrer">Download URL: {syncStatus()?.url}/download/db</a>
-            <div class="space-y-1">
-              <label for="mobile-write-token" class="block text-xs font-bold">Write token for the mobile app</label>
-              <input id="mobile-write-token" readOnly value={syncStatus()?.writeToken || ""} class="input input-bordered input-sm w-full font-mono text-xs" onFocus={event => event.currentTarget.select()} />
-              <p class="text-xs text-base-content/60">Send as <code>Authorization: Bearer &lt;token&gt;</code>. The token changes each time the server starts.</p>
-            </div>
           </Show>
           <Show when={syncError()}><p role="alert" class="text-xs text-error">{syncError()}</p></Show>
         </div>

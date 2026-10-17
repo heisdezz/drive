@@ -6,14 +6,16 @@ import { Database } from "bun:sqlite";
 import { getDatabaseConnection } from "../src/bun/database";
 import { albumHandlers } from "../src/bun/handlers/albums";
 import { isIgnored, walkDirectory } from "../src/bun/scanner";
-import { startMobileSync, stopMobileSync } from "../src/bun/mobile-sync";
+import { changeMobileSyncWriteToken, startMobileSync, stopMobileSync } from "../src/bun/mobile-sync";
+import { mobileTokenFile } from "../src/bun/mobile-token";
 import { startMediaServer, setActiveMediaDrive } from "../src/bun/media-server";
 import { MoveBatch, beginAlbumRename, moveScannedFile, newDeletionBatch, recoverPendingAlbumRenames, recoverPendingDeletions, recoverPendingMediaMoves } from "../src/bun/file-ops";
 import { mediaHandlers } from "../src/bun/handlers/media";
 
 const roots: string[] = [];
 afterEach(() => {
-	stopMobileSync();
+	if (process.env.DSTREAM_CONFIG_DIR) stopMobileSync();
+	delete process.env.DSTREAM_CONFIG_DIR;
 	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -308,6 +310,7 @@ describe("Python scanner update", () => {
 
 	test("mobile sync serves stats, snapshot, media ranges, and HEAD", async () => {
 		const { root, db } = library();
+		process.env.DSTREAM_CONFIG_DIR = path.join(root, "config");
 		fs.mkdirSync(path.join(root, "albums", "unknown"));
 		fs.writeFileSync(path.join(root, "albums", "unknown", "clip.mp4"), "0123456789");
 		const album = db.prepare("SELECT id FROM albums WHERE name = 'unknown'").get() as { id: number };
@@ -330,6 +333,7 @@ describe("Python scanner update", () => {
 
 	test("mobile sync CRUD requires a write token and keeps files and counts in sync", async () => {
 		const { root, db } = library();
+		process.env.DSTREAM_CONFIG_DIR = path.join(root, "config");
 		const unknownId = (db.prepare("SELECT id FROM albums WHERE name = 'unknown'").get() as { id: number }).id;
 		db.close();
 		const { port, writeToken } = startMobileSync(root, 0, "127.0.0.1");
@@ -377,6 +381,18 @@ describe("Python scanner update", () => {
 		expect(check.prepare("SELECT media_count FROM albums WHERE id = ?").get(unknownId)).toEqual({ media_count: 1 });
 		expect(check.prepare("SELECT id FROM albums WHERE id = ?").get(albumId)).toBeNull();
 		check.close();
+
+		expect(changeMobileSyncWriteToken("x").writeToken).toBe("x");
+		expect(JSON.parse(fs.readFileSync(mobileTokenFile(), "utf8")).writeToken).toBe("x");
+		expect((await postAlbum(auth)).status).toBe(401);
+		const shortToken = { Authorization: "Bearer x" };
+		expect((await postAlbum(shortToken)).status).toBe(201);
+		stopMobileSync();
+		const restarted = startMobileSync(root, 0, "127.0.0.1");
+		expect(restarted.writeToken).toBe("x");
+		expect((await fetch(`http://127.0.0.1:${restarted.port}/api/albums`, {
+			method: "POST", headers: { ...shortToken, "Content-Type": "application/json" }, body: JSON.stringify({ name: "After restart" }),
+		})).status).toBe(201);
 	});
 
 	test("local media server rejects uncataloged paths", async () => {

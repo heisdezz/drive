@@ -1,15 +1,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { createBackup, openReadableDb } from "./database";
 import { getOrGenerateThumbnail } from "./thumbnails";
 import { handleMobileCrud } from "./mobile-crud";
+import { getMobileWriteToken, setMobileWriteToken } from "./mobile-token";
 
 let server: ReturnType<typeof Bun.serve> | null = null;
 let activeDrive = "";
 let activePort = 8080;
-let writeToken = "";
 
 function localIp(): string {
 	for (const addresses of Object.values(os.networkInterfaces())) {
@@ -21,7 +21,12 @@ function localIp(): string {
 }
 
 export function mobileSyncStatus() {
-	return { running: !!server, drivePath: activeDrive, port: activePort, url: server ? `http://${localIp()}:${activePort}` : "", writeToken: server ? writeToken : "" };
+	return { running: !!server, drivePath: activeDrive, port: activePort, url: server ? `http://${localIp()}:${activePort}` : "", writeToken: getMobileWriteToken() };
+}
+
+export function changeMobileSyncWriteToken(token: string) {
+	setMobileWriteToken(token);
+	return mobileSyncStatus();
 }
 
 const cors = {
@@ -96,10 +101,11 @@ async function handle(request: Request): Promise<Response> {
 		/^\/api\/media\/\d+\/details$/.test(route) ||
 		(/^\/api\/media\/\d+$/.test(route) && ["PATCH", "DELETE"].includes(request.method))) {
 		if (request.method !== "GET" && request.method !== "HEAD") {
-			const supplied = /^Bearer ([a-f0-9]{64})$/i.exec(request.headers.get("authorization") || "")?.[1] || "";
-			const expected = Buffer.from(writeToken);
+			const authorization = request.headers.get("authorization") || "";
+			const supplied = /^Bearer /i.test(authorization) ? authorization.slice(7) : "";
+			const expected = Buffer.from(getMobileWriteToken());
 			const provided = Buffer.from(supplied);
-			if (!writeToken || provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+			if (!supplied || provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
 				return json({ error: "A valid write token is required." }, 401);
 			}
 		}
@@ -148,11 +154,11 @@ async function handle(request: Request): Promise<Response> {
 export function startMobileSync(drivePath: string, port: number, hostname = "0.0.0.0") {
 	if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Port must be between 1 and 65535.");
 	if (!fs.existsSync(path.join(drivePath, "albums", ".media_library.db"))) throw new Error("Select a drive with a scanned library.");
+	getMobileWriteToken();
 	server?.stop(true);
 	server = null;
 	activeDrive = fs.realpathSync(drivePath);
 	activePort = port;
-	writeToken = randomBytes(32).toString("hex");
 	server = Bun.serve({ hostname, port, maxRequestBodySize: 2 * 1024 * 1024 * 1024, fetch: request => handle(request).catch(err => json({ error: err.message }, 500)) });
 	activePort = server.port ?? port;
 	return mobileSyncStatus();
@@ -161,6 +167,5 @@ export function startMobileSync(drivePath: string, port: number, hostname = "0.0
 export function stopMobileSync() {
 	server?.stop(true);
 	server = null;
-	writeToken = "";
 	return mobileSyncStatus();
 }

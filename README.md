@@ -32,7 +32,11 @@ For frontend hot reload, use `bun run dev:hmr`.
 In Settings, select a scanned drive and start **Local Network Mobile Sync**.
 The server URL and a write token appear there. Read endpoints remain available
 on the local network; send `Authorization: Bearer <token>` for create, update,
-and delete requests. The token changes whenever the server restarts.
+and delete requests. You can edit the token in Settings; any nonempty length is
+accepted, and saving it takes effect immediately. The token persists across
+restarts in the app's local config directory as `mobile-sync.json` (on Linux,
+`~/.config/io.github.heisdezz.dstream/mobile-sync.json`, or under
+`$XDG_CONFIG_HOME` if set). It is separate from the library on the drive.
 
 | Method | Route | Purpose |
 | --- | --- | --- |

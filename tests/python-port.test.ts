@@ -255,13 +255,36 @@ describe("Python scanner update", () => {
 		const state = { scanning: true, scannedCount: 0, foundCount: 0, folderPath: root };
 		await walkDirectory(root, root, db, state, ["albums"]);
 		expect(state.foundCount).toBe(3);
-		for (const file of ["unknown/loose.jpg", "Vacation/beach.jpg", "2024/Events/party.mp4"]) {
+		for (const file of ["unknown/loose.jpg", "Vacation/beach.jpg", "Events/party.mp4"]) {
 			expect(fs.existsSync(path.join(root, "albums", file))).toBe(true);
 		}
 		expect(fs.existsSync(path.join(root, "Vacation"))).toBe(false);
 		expect(fs.existsSync(path.join(root, "2024"))).toBe(false);
 		const rows = db.prepare("SELECT name FROM albums WHERE name != 'unknown' ORDER BY name").all() as { name: string }[];
-		expect(rows.map(row => row.name)).toEqual(["2024/Events", "Vacation"]);
+		expect(rows.map(row => row.name)).toEqual(["Events", "Vacation"]);
+		db.close();
+	});
+
+	test("same-named source folders get separate albums and keep their mapping on later scans", async () => {
+		const { root, db } = library();
+		for (const branch of ["A", "B"]) {
+			const folder = path.join(root, branch, "Photos");
+			fs.mkdirSync(folder, { recursive: true });
+			fs.writeFileSync(path.join(folder, `${branch}.jpg`), branch);
+		}
+		const state = { scanning: true, scannedCount: 0, foundCount: 0, folderPath: root };
+		await walkDirectory(root, root, db, state);
+		const rows = db.prepare(`SELECT m.original_relative_path AS original_path, a.id AS album_id, a.name AS album_name
+			FROM media_items m JOIN albums a ON a.id = m.album_id ORDER BY m.original_relative_path`).all() as
+			{ original_path: string; album_id: number; album_name: string }[];
+		expect(rows.map(row => row.album_name).sort()).toEqual(["Photos", "Photos_2"]);
+		expect(rows[0].album_id).not.toBe(rows[1].album_id);
+		const aAlbumId = rows.find(row => row.original_path === "A/Photos/A.jpg")!.album_id;
+		fs.mkdirSync(path.join(root, "A", "Photos"), { recursive: true });
+		fs.writeFileSync(path.join(root, "A", "Photos", "later.jpg"), "later");
+		await walkDirectory(root, root, db, state);
+		expect(db.prepare("SELECT album_id FROM media_items WHERE original_relative_path = ?").get("A/Photos/later.jpg"))
+			.toEqual({ album_id: aAlbumId });
 		db.close();
 	});
 

@@ -34,6 +34,15 @@ export function initializeDatabase(db: Database) {
 		);
 	`);
 
+	// Keep source folders associated with their album after a scan moves the
+	// files away. This also distinguishes folders that share the same leaf name.
+	db.run(`
+		CREATE TABLE IF NOT EXISTS scan_album_sources (
+			source_relative_path TEXT PRIMARY KEY,
+			album_id INTEGER NOT NULL UNIQUE
+		);
+	`);
+
 	db.run(`
 		CREATE TABLE IF NOT EXISTS tags (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

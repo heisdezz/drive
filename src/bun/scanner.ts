@@ -57,7 +57,44 @@ export async function walkDirectory(
 	// a single journal flush instead of three separate synchronous DB calls.
 	const insertAlbum = db.prepare("INSERT OR IGNORE INTO albums (name, relative_path) VALUES (?, ?)");
 	const selectAlbum = db.prepare("SELECT id FROM albums WHERE name = ?");
+	const selectSourceAlbum = db.prepare(`SELECT a.name FROM scan_album_sources s
+		JOIN albums a ON a.id = s.album_id WHERE s.source_relative_path = ?`);
+	const selectAlbumSource = db.prepare("SELECT source_relative_path FROM scan_album_sources WHERE album_id = ?");
+	const selectAlbumOrigin = db.prepare("SELECT original_relative_path FROM media_items WHERE album_id = ? LIMIT 1");
+	const clearMissingSourceAlbum = db.prepare(`DELETE FROM scan_album_sources
+		WHERE source_relative_path = ? AND NOT EXISTS
+		(SELECT 1 FROM albums a WHERE a.id = scan_album_sources.album_id)`);
+	const claimSource = db.prepare("INSERT OR IGNORE INTO scan_album_sources (source_relative_path, album_id) VALUES (?, ?)");
 	const insertMedia = db.prepare("INSERT OR IGNORE INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, ?, ?, ?)");
+	const sourceAlbumNames = new Map<string, string>();
+
+	function albumNameFor(sourceDir: string): string {
+		if (!sourceDir || sourceDir === "unknown") return "unknown";
+		const cached = sourceAlbumNames.get(sourceDir);
+		if (cached) return cached;
+		const mapped = selectSourceAlbum.get(sourceDir) as { name: string } | undefined;
+		if (mapped) {
+			sourceAlbumNames.set(sourceDir, mapped.name);
+			return mapped.name;
+		}
+		clearMissingSourceAlbum.run(sourceDir);
+		const leaf = path.posix.basename(sourceDir);
+		for (let suffix = 1; ; suffix++) {
+			const name = suffix === 1 ? leaf : `${leaf}_${suffix}`;
+			if (name === "unknown") continue;
+			const existing = selectAlbum.get(name) as { id: number } | undefined;
+			if (!existing) {
+				sourceAlbumNames.set(sourceDir, name);
+				return name;
+			}
+			if (selectAlbumSource.get(existing.id)) continue;
+			const origin = selectAlbumOrigin.get(existing.id) as { original_relative_path: string } | undefined;
+			if (!origin || path.posix.dirname(origin.original_relative_path.replace(/\\/g, "/")) === sourceDir) {
+				sourceAlbumNames.set(sourceDir, name);
+				return name;
+			}
+		}
+	}
 
 	const recordFile = db.transaction((
 		fileHash: string,
@@ -66,9 +103,11 @@ export async function walkDirectory(
 		fileSize: number,
 		mimeType: string,
 		albumName: string,
+		sourceDir: string,
 	) => {
 		insertAlbum.run(albumName, `albums/${albumName}`);
 		const album = selectAlbum.get(albumName) as { id: number } | undefined;
+		if (album && sourceDir && sourceDir !== "unknown") claimSource.run(sourceDir, album.id);
 		const result = insertMedia.run(fileHash, relativePath, currentRelativePath, fileSize, mimeType, album?.id ?? null);
 		if (result.changes === 0) throw new Error(`Media record already exists for ${relativePath}`);
 	});
@@ -117,8 +156,8 @@ export async function walkDirectory(
 							const fileHash = `${file.name}_${fileStats.size}_${fileStats.mtimeMs}`;
 							const mimeType = isImage ? `image/${ext.slice(1)}` : `video/${ext.slice(1)}`;
 
-						const sourceDir = path.relative(drivePath, currentDir).replace(/\\/g, "/");
-						const albumName = sourceDir === "" || sourceDir === "." || sourceDir === "unknown" ? "unknown" : sourceDir;
+							const sourceDir = path.relative(drivePath, currentDir).replace(/\\/g, "/");
+							const albumName = albumNameFor(sourceDir);
 							const destDir = path.join(drivePath, "albums", albumName);
 
 							await fs.promises.mkdir(destDir, { recursive: true });
@@ -138,7 +177,7 @@ export async function walkDirectory(
 							try {
 								const currentRelativePath = path.relative(drivePath, targetFullPath);
 								await moveScannedFile(drivePath, fullPath, targetFullPath, () =>
-									recordFile(fileHash, relativePath, currentRelativePath, fileStats.size, mimeType, albumName));
+									recordFile(fileHash, relativePath, currentRelativePath, fileStats.size, mimeType, albumName, sourceDir));
 
 								scanState.foundCount++;
 								addLog("info", `Moved media file during scan`, `original: ${relativePath} -> current: ${currentRelativePath}`);

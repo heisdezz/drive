@@ -1,3 +1,4 @@
+import { albumDbPath, albumRoot } from "../album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
@@ -20,7 +21,7 @@ export const mediaHandlers: Pick<
 	getMediaItems: async ({ drivePath, limit, offset, search, filter, sortBy, sortOrder }) => {
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { items: [], total: 0 };
 			}
@@ -82,7 +83,7 @@ export const mediaHandlers: Pick<
 	getMediaItem: async ({ drivePath, itemId, albumId }) => {
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { error: "Library database not found" };
 			}
@@ -159,7 +160,7 @@ export const mediaHandlers: Pick<
 	getRelatedMedia: async ({ drivePath, itemId, limit }) => {
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { items: [] };
 			}
@@ -218,7 +219,7 @@ export const mediaHandlers: Pick<
 	getThumbnail: async ({ mediaId, relativePath, drivePath, fileHash }) => {
 		addLog("info", `RPC Request: getThumbnail invoked`, `mediaId: ${mediaId}, hash: ${fileHash}`);
 		try {
-			const thumbPath = path.join(drivePath, "albums", "thumbs", `${fileHash}.jpg`);
+			const thumbPath = path.join(albumRoot(drivePath), "thumbs", `${fileHash}.jpg`);
 			const fullMediaPath = path.join(drivePath, relativePath);
 			const localUrl = `http://localhost:${MEDIA_SERVER_PORT}/media/thumb?drivePath=${encodeURIComponent(drivePath)}&relativePath=${encodeURIComponent(relativePath)}&fileHash=${fileHash}`;
 
@@ -233,7 +234,7 @@ export const mediaHandlers: Pick<
 		addLog("info", `RPC Request: moveMediaItemsToAlbum invoked`, `mediaIds count: ${mediaIds.length}, targetAlbumId: ${targetAlbumId}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				throw new Error("Library database not found");
 			}
@@ -247,7 +248,7 @@ export const mediaHandlers: Pick<
 				throw new Error(`Target album with ID ${targetAlbumId} not found`);
 			}
 
-			const destDir = path.join(drivePath, "albums", album.name);
+			const destDir = path.join(albumRoot(drivePath), album.name);
 			// Create destination folder if not exists
 			await fs.promises.mkdir(destDir, { recursive: true });
 
@@ -325,7 +326,7 @@ export const mediaHandlers: Pick<
 		addLog("info", `RPC Request: deleteMediaItems invoked`, `mediaIds count: ${mediaIds.length}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				throw new Error("Library database not found");
 			}
@@ -353,7 +354,7 @@ export const mediaHandlers: Pick<
 						await staged.move(fullPath, path.join(batchDir, String(id)));
 					}
 
-					const thumbPath = path.join(drivePath, "albums", "thumbs", `${item.file_hash}.jpg`);
+					const thumbPath = path.join(albumRoot(drivePath), "thumbs", `${item.file_hash}.jpg`);
 					thumbnails.push(thumbPath);
 
 					// 3. Delete from database

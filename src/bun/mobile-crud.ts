@@ -1,3 +1,4 @@
+import { albumDbPath, albumRoot } from "./album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -51,7 +52,7 @@ function errorStatus(message: string): number {
 async function albumPath(drivePath: string, relativePath: string): Promise<string> {
   const root = fs.realpathSync(drivePath);
   const directory = path.resolve(root, relativePath);
-  const albumsRoot = path.join(root, "albums");
+  const albumsRoot = albumRoot(root);
   if (!directory.startsWith(albumsRoot + path.sep)) throw new Error("Invalid album path.");
   if (fs.realpathSync(albumsRoot) !== albumsRoot) throw new Error("Album root must be inside the selected drive.");
   let current = albumsRoot;
@@ -94,7 +95,7 @@ async function uploadMedia(request: Request, drivePath: string, url: URL): Promi
   const mime = MIME_BY_EXT[extension];
   if (!mime) return fail("Unsupported image or video file extension.", 415);
 
-  const dbFile = path.join(drivePath, "albums", ".media_library.db");
+  const dbFile = albumDbPath(drivePath);
   assertWritable(drivePath);
   const readDb = openReadableDb(dbFile);
   let relativePath: string;
@@ -143,7 +144,7 @@ async function uploadMedia(request: Request, drivePath: string, url: URL): Promi
       VALUES (?, ?, ?, ?, ?, ?)`).run(hash, currentRelativePath, currentRelativePath, size, mime, albumId);
     committed = true;
     const item = db.prepare("SELECT * FROM media_items WHERE id = ?").get(Number(result.lastInsertRowid));
-    try { backgroundThumbnailQueue.add(target, path.join(drivePath, "albums", "thumbs", `${hash}.jpg`)); }
+    try { backgroundThumbnailQueue.add(target, path.join(albumRoot(drivePath), "thumbs", `${hash}.jpg`)); }
     catch { /* Upload succeeded; the thumbnail can be generated on demand. */ }
     return json({ item }, 201);
   } catch (error: any) {

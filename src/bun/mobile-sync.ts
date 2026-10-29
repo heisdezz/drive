@@ -1,3 +1,4 @@
+import { albumDbPath, albumRoot } from "./album-location";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +19,10 @@ function localIp(): string {
 		}
 	}
 	return "127.0.0.1";
+}
+
+export function isMobileSyncActiveForDrive(drivePath: string): boolean {
+	return !!server && activeDrive === drivePath;
 }
 
 export function mobileSyncStatus() {
@@ -41,7 +46,7 @@ function json(data: unknown, status = 200, head = false): Response {
 	return new Response(head ? null : body, { status, headers: { ...cors, "Content-Type": "application/json", "Content-Length": String(Buffer.byteLength(body)) } });
 }
 
-function dbPath() { return path.join(activeDrive, "albums", ".media_library.db"); }
+function dbPath() { return albumDbPath(activeDrive); }
 
 async function serveFile(filePath: string, mime: string, request: Request, head: boolean, download = false): Promise<Response> {
 	const file = Bun.file(filePath);
@@ -144,7 +149,7 @@ async function handle(request: Request): Promise<Response> {
 		catch { return json({ error: "Media file not found" }, 404, head); }
 		if (!target) return json({ error: "Forbidden media path" }, 403, head);
 		if (media[1] === "media") return serveFile(target, row.mime_type || "application/octet-stream", request, head);
-		const thumb = path.join(activeDrive, "albums", "thumbs", `${row.file_hash}.jpg`);
+		const thumb = path.join(albumRoot(activeDrive), "thumbs", `${row.file_hash}.jpg`);
 		if (!head && !(await getOrGenerateThumbnail(target, thumb))) return json({ error: "Thumbnail unavailable" }, 404);
 		return serveFile(thumb, "image/jpeg", request, head);
 	}
@@ -153,7 +158,7 @@ async function handle(request: Request): Promise<Response> {
 
 export function startMobileSync(drivePath: string, port: number, hostname = "0.0.0.0") {
 	if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Port must be between 1 and 65535.");
-	if (!fs.existsSync(path.join(drivePath, "albums", ".media_library.db"))) throw new Error("Select a drive with a scanned library.");
+	if (!fs.existsSync(albumDbPath(drivePath))) throw new Error("Select a drive with a scanned library.");
 	getMobileWriteToken();
 	server?.stop(true);
 	server = null;

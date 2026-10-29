@@ -1,3 +1,6 @@
+import { albumRelativeRoot, albumRoot, setAlbumRoot } from "../album-location";
+import { isScanBusy } from "./scan";
+import { isMobileSyncActiveForDrive } from "../mobile-sync";
 import { Utils } from "electrobun/bun";
 import path from "node:path";
 import si from "systeminformation";
@@ -7,8 +10,22 @@ import type { RpcHandlers } from "./types";
 
 export const driveHandlers: Pick<
 	RpcHandlers,
-	"getDrives" | "mountDrive" | "mountBlockDevice"
+	"getDrives" | "mountDrive" | "mountBlockDevice" | "getAlbumLocation" | "setAlbumLocation"
 > = {
+	getAlbumLocation: async ({ drivePath }) => ({
+		relativePath: albumRelativeRoot(drivePath),
+		absolutePath: albumRoot(drivePath),
+	}),
+	setAlbumLocation: async ({ drivePath, folderPath }) => {
+		try {
+			if (isScanBusy(drivePath)) throw new Error("Wait for the current scan to finish before changing the album folder.");
+			if (isMobileSyncActiveForDrive(drivePath)) throw new Error("Stop Mobile Sync before changing this drive's album folder.");
+			const relativePath = setAlbumRoot(drivePath, folderPath);
+			return { success: true, relativePath, absolutePath: albumRoot(drivePath) };
+		} catch (error: any) {
+			return { success: false, error: error.message };
+		}
+	},
 	getDrives: async () => {
 		addLog("info", "RPC Request: getDrives invoked");
 		return getConnectedDrives();

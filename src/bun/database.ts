@@ -1,13 +1,15 @@
+import { albumRelativePath, driveForAlbumDb } from "./album-location";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { addLog } from "./logger";
 import { recoverPendingAlbumRenames, recoverPendingDeletions, recoverPendingMediaMoves, recoverPendingScanMoves } from "./file-ops";
 
-const recoveredDrives = new Set<string>();
+const recoveredDatabases = new Set<string>();
 
 // SQLite Database structure initialization
-export function initializeDatabase(db: Database) {
+export function initializeDatabase(db: Database, drivePath: string) {
 	db.run(`
 		CREATE TABLE IF NOT EXISTS media_items (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,10 +97,8 @@ export function initializeDatabase(db: Database) {
 	}
 
 	// Ensure the default "unknown" album always exists in the database
-	db.run(`
-		INSERT OR IGNORE INTO albums (name, relative_path, description)
-		VALUES ('unknown', 'albums/unknown', 'Default album for unsorted media');
-	`);
+	db.prepare("INSERT OR IGNORE INTO albums (name, relative_path, description) VALUES ('unknown', ?, 'Default album for unsorted media')")
+		.run(albumRelativePath(drivePath, "unknown"));
 
 	// Migrate any existing media_items with NULL album_id to the 'unknown' album
 	const unknownAlbum = db.prepare("SELECT id FROM albums WHERE name = 'unknown'").get() as { id: number } | undefined;
@@ -196,7 +196,7 @@ export function createBackup(dbPath: string): string | null {
 	const dir = backupDirFor(dbPath);
 	fs.mkdirSync(dir, { recursive: true });
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const backupPath = path.join(dir, `media_library-${stamp}.db`);
+	const backupPath = path.join(dir, `media_library-${stamp}-${randomUUID()}.db`);
 
 	let db: Database | null = null;
 	try {
@@ -251,14 +251,14 @@ export function getDatabaseConnection(dbPath: string): Database {
 	let db: Database | null = null;
 	try {
 		db = openLibraryDb(dbPath);
-		initializeDatabase(db);
-		const drivePath = path.dirname(path.dirname(dbPath));
-		if (!recoveredDrives.has(drivePath)) {
+		const drivePath = driveForAlbumDb(dbPath);
+		initializeDatabase(db, drivePath);
+		if (!recoveredDatabases.has(dbPath)) {
 			recoverPendingDeletions(db, drivePath);
 			recoverPendingMediaMoves(db, drivePath);
 			recoverPendingAlbumRenames(db, drivePath);
 			recoverPendingScanMoves(db, drivePath);
-			recoveredDrives.add(drivePath);
+			recoveredDatabases.add(dbPath);
 		}
 		// Touch actual data pages (not just the schema page) so on-disk
 		// corruption is detected here and can trigger recovery, rather than
@@ -277,6 +277,19 @@ export function getDatabaseConnection(dbPath: string): Database {
 
 		addLog("error", `SQLite database malformed/corrupted: ${err.message}. Attempting recovery...`);
 
+		// Keep a copy for manual recovery before restoring a snapshot or rebuilding.
+		if (fs.existsSync(dbPath)) {
+			try {
+				const dir = backupDirFor(dbPath);
+				fs.mkdirSync(dir, { recursive: true });
+				const preserved = path.join(dir, `unreadable-${Date.now()}-${randomUUID()}.db`);
+				fs.copyFileSync(dbPath, preserved, fs.constants.COPYFILE_EXCL);
+				addLog("warn", "Preserved unreadable database", preserved);
+			} catch (preserveErr: any) {
+				addLog("warn", `Could not preserve unreadable database: ${preserveErr.message}`);
+			}
+		}
+
 		// Remove the corrupt file + any stale journal/wal/shm siblings.
 		for (const p of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
 			try {
@@ -292,7 +305,7 @@ export function getDatabaseConnection(dbPath: string): Database {
 			try {
 				fs.copyFileSync(backup, dbPath);
 				db = openLibraryDb(dbPath);
-				initializeDatabase(db);
+				initializeDatabase(db, driveForAlbumDb(dbPath));
 				db.prepare("SELECT count(*) FROM media_items").get();
 				addLog("info", `Recovered database from backup`, backup);
 				return db;
@@ -314,7 +327,7 @@ export function getDatabaseConnection(dbPath: string): Database {
 		addLog("warn", "No usable backup; recreating an empty library database.");
 		try {
 			db = openLibraryDb(dbPath);
-			initializeDatabase(db);
+			initializeDatabase(db, driveForAlbumDb(dbPath));
 			return db;
 		} catch (recreateErr: any) {
 			if (db) {

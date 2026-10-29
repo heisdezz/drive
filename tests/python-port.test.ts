@@ -301,8 +301,32 @@ describe("Python scanner update", () => {
 		expect(renamed.success).toBe(true);
 		expect(fs.existsSync(path.join(root, "albums", "2025", "Events", "party.jpg"))).toBe(true);
 		fs.rmSync(path.join(root, "albums", "2025", "Events", "party.jpg"));
+		const staleCount = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+		staleCount.prepare("UPDATE albums SET media_count = 77 WHERE id = ?").run(albumId);
+		staleCount.close();
 		const validated = await albumHandlers.validateAlbumFiles({ drivePath: root, albumId });
 		expect(validated).toMatchObject({ success: true, checked: 1, removed: 1 });
+		const repaired = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+		expect(repaired.prepare("SELECT media_count FROM albums WHERE id = ?").get(albumId)).toEqual({ media_count: 0 });
+		repaired.close();
+	});
+
+	test("album validation repairs a stale count when files are still present", async () => {
+		const { root, db } = library();
+		const created = await albumHandlers.createAlbum({ drivePath: root, name: "Count Check" });
+		expect(created.success).toBe(true);
+		const albumId = created.album!.id;
+		fs.writeFileSync(path.join(root, "albums", "Count Check", "photo.jpg"), "photo");
+		db.prepare("INSERT INTO media_items (file_hash, original_relative_path, current_relative_path, file_size, mime_type, album_id) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("count-check", "albums/Count Check/photo.jpg", "albums/Count Check/photo.jpg", 5, "image/jpeg", albumId);
+		db.prepare("UPDATE albums SET media_count = 77 WHERE id = ?").run(albumId);
+		db.close();
+		expect(await albumHandlers.validateAlbumFiles({ drivePath: root, albumId })).toMatchObject({ success: true, checked: 1, removed: 0 });
+		const repaired = getDatabaseConnection(path.join(root, "albums", ".media_library.db"));
+		expect(repaired.prepare("SELECT media_count FROM albums WHERE id = ?").get(albumId)).toEqual({ media_count: 1 });
+		repaired.close();
+		const visible = await albumHandlers.getAlbumMedia({ drivePath: root, albumId, limit: 10, offset: 0 });
+		expect(visible.total).toBe(1);
 	});
 
 	test("parent rename updates descendants without touching similarly named albums", async () => {

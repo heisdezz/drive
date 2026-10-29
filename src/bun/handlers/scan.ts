@@ -1,3 +1,4 @@
+import { albumDbPath, albumRoot, recoverCatalog } from "../album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
@@ -10,21 +11,29 @@ import {
 	openReadableDb,
 } from "../database";
 import { activeScans, walkDirectory } from "../scanner";
+import { AlbumRescanControl, rescanAlbumFolder, type AlbumRescanStatus } from "../album-rescan";
 import type { RpcHandlers } from "./types";
 
 const scanJobs = new Map<string, Promise<void>>();
 const scanStarts = new Map<string, Promise<void>>();
+const albumRescanJobs = new Map<string, Promise<void>>();
+const albumRescanStates = new Map<string, AlbumRescanStatus>();
+const albumRescanControls = new Map<string, AlbumRescanControl>();
+
+export function isScanBusy(drivePath: string): boolean {
+  return scanStarts.has(drivePath) || scanJobs.has(drivePath) || albumRescanJobs.has(drivePath) || !!activeScans.get(drivePath)?.scanning;
+}
 
 export const scanHandlers: Pick<
 	RpcHandlers,
-	"scaffoldLibrary" | "startScan" | "stopScan" | "getScanStatus"
+	"scaffoldLibrary" | "startScan" | "stopScan" | "getScanStatus" | "startAlbumRescan" | "pauseAlbumRescan" | "stopAlbumRescan" | "getAlbumRescanStatus"
 > = {
 	scaffoldLibrary: async ({ drivePath }) => {
 		addLog("info", `RPC Request: scaffoldLibrary invoked`, `drivePath: ${drivePath}`);
 		try {
-			const albumsPath = path.join(drivePath, "albums");
+			const albumsPath = albumRoot(drivePath);
 			const unknownPath = path.join(albumsPath, "unknown");
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 
 			// Fail fast with a clear message if the drive is read-only,
 			// rather than partway through creating folders / the DB.
@@ -47,6 +56,13 @@ export const scanHandlers: Pick<
 			if (scanState && scanState.scanning) {
 				addLog("info", `Drive ${drivePath} is actively scanning. Skipping SQLite initialization to avoid locks.`);
 				return { success: true };
+			}
+
+			// Reuse a catalog at the drive root or restore a snapshot before SQLite
+			// creates a fresh empty catalog in the chosen album folder.
+			if (!fs.existsSync(dbPath)) {
+				const source = recoverCatalog(drivePath, albumsPath);
+				if (source) addLog("info", `Recovered library catalog from ${source}`, dbPath);
 			}
 
 			try {
@@ -72,7 +88,8 @@ export const scanHandlers: Pick<
 		scanStarts.set(drivePath, startGate);
 		if (previousStart) await previousStart;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			if (albumRescanJobs.has(drivePath)) return { success: false, error: "Wait for the album folder rescan to finish." };
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				addLog("warn", "Database not scaffolded, cannot start scan", drivePath);
 				return { success: false, error: "Database not scaffolded yet. Please scaffold library first." };
@@ -141,6 +158,50 @@ export const scanHandlers: Pick<
 		await scanJobs.get(drivePath);
 		return { success: true };
 	},
+	startAlbumRescan: async ({ drivePath }) => {
+		if (isScanBusy(drivePath)) return { success: false, error: "Wait for the current scan to finish." };
+		const state: AlbumRescanStatus = { scanning: true, checked: 0, added: 0, updated: 0, missing: 0, albums: 0, recoveredDatabase: false };
+		const control = new AlbumRescanControl();
+		albumRescanStates.set(drivePath, state);
+		albumRescanControls.set(drivePath, control);
+		const job = (async () => {
+			try {
+				await rescanAlbumFolder(drivePath, state, control);
+				if (control.stopRequested) addLog("info", "Album folder rescan stopped by user", drivePath);
+				else addLog("info", "Album folder rescan completed", `${drivePath}: ${state.added} added, ${state.updated} updated, ${state.missing} missing`);
+			} catch (error: any) {
+				state.error = error.message || "Album folder rescan failed.";
+				addLog("error", `Album folder rescan failed: ${state.error}`, drivePath);
+			} finally {
+				state.scanning = false;
+				state.paused = false;
+				state.stopped = control.stopRequested;
+				albumRescanControls.delete(drivePath);
+				albumRescanJobs.delete(drivePath);
+			}
+		})();
+		albumRescanJobs.set(drivePath, job);
+		return { success: true };
+	},
+	pauseAlbumRescan: async ({ drivePath, paused }) => {
+		const control = albumRescanControls.get(drivePath);
+		const state = albumRescanStates.get(drivePath);
+		if (!control || !state?.scanning) return { success: false, error: "No album rescan is running." };
+		if (paused) control.pause();
+		else control.resume();
+		state.paused = paused;
+		return { success: true };
+	},
+	stopAlbumRescan: async ({ drivePath }) => {
+		const control = albumRescanControls.get(drivePath);
+		const state = albumRescanStates.get(drivePath);
+		if (!control || !state?.scanning) return { success: false, error: "No album rescan is running." };
+		control.stop();
+		state.paused = false;
+		await albumRescanJobs.get(drivePath);
+		return { success: true };
+	},
+	getAlbumRescanStatus: async ({ drivePath }) => albumRescanStates.get(drivePath) ?? { scanning: false, checked: 0, added: 0, updated: 0, missing: 0, albums: 0, recoveredDatabase: false },
 	getScanStatus: async ({ drivePath }) => {
 		const state = activeScans.get(drivePath);
 		if (state) {
@@ -154,7 +215,7 @@ export const scanHandlers: Pick<
 		// If not currently scanning, return database total
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (fs.existsSync(dbPath)) {
 				db = openReadableDb(dbPath);
 				const result = db.prepare("SELECT count(*) as count FROM media_items").get() as { count: number };

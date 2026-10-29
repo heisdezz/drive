@@ -105,6 +105,7 @@ function Index() {
   const drive = useDriveStore();
 
   const [scanStatus, setScanStatus] = createSignal<any>(null);
+  const [albumLocation, setAlbumLocation] = createSignal("");
   const [mediaItems, setMediaItems] = createSignal<any[]>([]);
   const [albums, setAlbums] = createSignal<Album[]>([]);
   const [totalMedia, setTotalMedia] = createSignal(0);
@@ -117,6 +118,14 @@ function Index() {
     if (!selectedDrive) return;
 
     let active = true;
+    void rpc.request
+      .getAlbumLocation({ drivePath: selectedDrive.path })
+      .then((result) => {
+        if (active) setAlbumLocation(result.absolutePath);
+      })
+      .catch(() => {
+        if (active) setAlbumLocation("");
+      });
     const loadData = async () => {
       setLoadingMedia(true);
       setLoadingAlbums(true);
@@ -270,7 +279,7 @@ function Index() {
                     <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-base-content mb-4 leading-tight">
                       Welcome to{" "}
                       <span class="bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-secondary">
-                        Antigravity Drive
+                        D-Stream
                       </span>
                     </h2>
                     <p class="text-base-content/80 text-lg mb-8 leading-relaxed">
@@ -478,6 +487,12 @@ function Index() {
                   {drive.selectedDrive!.path} · {drive.selectedDrive!.size}{" "}
                   Total
                 </span>
+                <Show when={albumLocation()}>
+                  <p class="text-xs text-base-content/70 mt-1 break-all">
+                    Album folder:{" "}
+                    <span class="font-mono select-all">{albumLocation()}</span>
+                  </p>
+                </Show>
               </div>
             </div>
 

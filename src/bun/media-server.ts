@@ -1,3 +1,4 @@
+import { albumDbPath, albumRoot } from "./album-location";
 import path from "node:path";
 import fs from "node:fs";
 import { addLog } from "./logger";
@@ -16,11 +17,11 @@ let activeDrive: string | null = null;
 export function setActiveMediaDrive(drivePath: string | null) {
   if (!drivePath) { activeDrive = null; return; }
   const root = fs.realpathSync(drivePath);
-  if (!fs.existsSync(path.join(root, "albums", ".media_library.db"))) {
+  if (!fs.existsSync(albumDbPath(root))) {
     activeDrive = null;
     return;
   }
-  const dbPath = path.join(root, "albums", ".media_library.db");
+  const dbPath = albumDbPath(root);
   try {
     const db = getDatabaseConnection(dbPath);
     db.close();
@@ -39,7 +40,7 @@ async function authorizedMedia(filePath: string, fileHash?: string): Promise<str
   try { target = await fs.promises.realpath(filePath); } catch { return null; }
   const relative = path.relative(activeDrive, target);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
-  const db = openReadableDb(path.join(activeDrive, "albums", ".media_library.db"));
+  const db = openReadableDb(albumDbPath(activeDrive));
   try {
     const row = fileHash
       ? db.prepare("SELECT id FROM media_items WHERE current_relative_path = ? AND file_hash = ?").get(relative, fileHash)
@@ -195,12 +196,7 @@ export function startMediaServer(port = MEDIA_SERVER_PORT) {
           if (!activeDrive || requestedDrive !== activeDrive) {
             return new Response("Forbidden drive", { status: 403, headers: corsHeaders });
           }
-          const thumbPath = path.join(
-            drivePath,
-            "albums",
-            "thumbs",
-            `${fileHash}.jpg`,
-          );
+          const thumbPath = path.join(albumRoot(drivePath), "thumbs", `${fileHash}.jpg`);
           const fullMediaPath = await authorizedMedia(path.join(drivePath, relativePath), fileHash);
           if (!fullMediaPath) return new Response("Forbidden media path", { status: 403, headers: corsHeaders });
 

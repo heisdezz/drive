@@ -1,3 +1,4 @@
+import { albumRelativePath, albumRelativeRoot, albumRoot } from "./album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { readdir } from "node:fs/promises";
@@ -105,7 +106,7 @@ export async function walkDirectory(
 		albumName: string,
 		sourceDir: string,
 	) => {
-		insertAlbum.run(albumName, `albums/${albumName}`);
+		insertAlbum.run(albumName, `${albumRelativePath(drivePath, albumName)}`);
 		const album = selectAlbum.get(albumName) as { id: number } | undefined;
 		if (album && sourceDir && sourceDir !== "unknown") claimSource.run(sourceDir, album.id);
 		const result = insertMedia.run(fileHash, relativePath, currentRelativePath, fileSize, mimeType, album?.id ?? null);
@@ -132,6 +133,9 @@ export async function walkDirectory(
 				const relativePath = path.relative(drivePath, fullPath);
 
 				if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) continue;
+				const albumRelative = albumRelativeRoot(drivePath).replace(/\\/g, "/");
+				const normalizedRelative = relativePath.replace(/\\/g, "/");
+				if (normalizedRelative === albumRelative || normalizedRelative.startsWith(`${albumRelative}/`)) continue;
 				if (isIgnored(file.name, relativePath, ignoreList)) continue;
 
 				if (file.isDirectory()) {
@@ -158,7 +162,7 @@ export async function walkDirectory(
 
 							const sourceDir = path.relative(drivePath, currentDir).replace(/\\/g, "/");
 							const albumName = albumNameFor(sourceDir);
-							const destDir = path.join(drivePath, "albums", albumName);
+							const destDir = path.join(albumRoot(drivePath), albumName);
 
 							await fs.promises.mkdir(destDir, { recursive: true });
 
@@ -182,13 +186,13 @@ export async function walkDirectory(
 								scanState.foundCount++;
 								addLog("info", `Moved media file during scan`, `original: ${relativePath} -> current: ${currentRelativePath}`);
 
-								const thumbPath = path.join(drivePath, "albums", "thumbs", `${fileHash}.jpg`);
+								const thumbPath = path.join(albumRoot(drivePath), "thumbs", `${fileHash}.jpg`);
 								backgroundThumbnailQueue.add(targetFullPath, thumbPath);
 							} catch (moveErr: any) {
 								addLog("error", `Failed to move media file: ${fullPath}`, moveErr.message);
 							}
 						} else {
-							const thumbPath = path.join(drivePath, "albums", "thumbs", `${existing.file_hash}.jpg`);
+							const thumbPath = path.join(albumRoot(drivePath), "thumbs", `${existing.file_hash}.jpg`);
 							const targetFullPath = path.join(drivePath, existing.current_relative_path);
 							backgroundThumbnailQueue.add(targetFullPath, thumbPath);
 						}

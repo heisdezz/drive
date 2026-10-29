@@ -3,6 +3,7 @@ import { createSignal } from "solid-js";
 const DEFAULT_IGNORE_LIST = [
   "temp",
   "tmp",
+  "thumbs",
   "Archive",
   "System Volume Information",
   "$RECYCLE.BIN",

@@ -1,3 +1,4 @@
+import { albumRoot } from "./album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -37,7 +38,7 @@ export class MoveBatch {
 		let journal: string | undefined;
 		if (this.drivePath) {
 			if (itemId === undefined) throw new Error("Media item ID required for a recoverable move.");
-			journal = writeJournal(path.join(this.drivePath, "albums", ".pending-media-moves"), {
+			journal = writeJournal(path.join(albumRoot(this.drivePath), ".pending-media-moves"), {
 				id: itemId, original: path.relative(this.drivePath, src), current: path.relative(this.drivePath, dest),
 			});
 		}
@@ -83,7 +84,7 @@ function journalPath(drivePath: string, relative: string): string {
 }
 
 export function recoverPendingMediaMoves(db: Database, drivePath: string) {
-	const dir = path.join(drivePath, "albums", ".pending-media-moves");
+	const dir = path.join(albumRoot(drivePath), ".pending-media-moves");
 	if (!fs.existsSync(dir)) return;
 	const lookup = db.prepare("SELECT current_relative_path FROM media_items WHERE id = ?");
 	for (const file of fs.readdirSync(dir)) {
@@ -105,7 +106,7 @@ export function recoverPendingMediaMoves(db: Database, drivePath: string) {
 	}
 }
 
-function albumRenameDir(drivePath: string) { return path.join(drivePath, "albums", ".pending-album-renames"); }
+function albumRenameDir(drivePath: string) { return path.join(albumRoot(drivePath), ".pending-album-renames"); }
 
 export function beginAlbumRename(drivePath: string, albumId: number, original: string, current: string): string {
 	return writeJournal(albumRenameDir(drivePath), { id: albumId, original, current });
@@ -135,10 +136,10 @@ export function recoverPendingAlbumRenames(db: Database, drivePath: string) {
 }
 
 export function pendingDeletionDir(drivePath: string): string {
-	return path.join(drivePath, "albums", ".pending-delete");
+	return path.join(albumRoot(drivePath), ".pending-delete");
 }
 
-function scanMoveDir(drivePath: string) { return path.join(drivePath, "albums", ".pending-scan-moves"); }
+function scanMoveDir(drivePath: string) { return path.join(albumRoot(drivePath), ".pending-scan-moves"); }
 
 export async function moveScannedFile(drivePath: string, src: string, dest: string, record: () => void) {
 	const journal = writeJournal(scanMoveDir(drivePath), { original: path.relative(drivePath, src), current: path.relative(drivePath, dest) });

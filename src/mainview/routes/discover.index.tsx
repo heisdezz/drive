@@ -22,6 +22,9 @@ import {
   Plus,
   X,
   RotateCcw,
+  Pause,
+  Play,
+  Square,
   Shield,
   Tag,
 } from "lucide-solid";
@@ -44,6 +47,87 @@ function DiscoverComponent() {
 
   let scanPickerRef: HTMLInputElement | undefined;
   let ignorePickerRef: HTMLInputElement | undefined;
+
+  const [albumLocation, setAlbumLocation] = createSignal("");
+  const [albumLocationBusy, setAlbumLocationBusy] = createSignal(false);
+  const [albumLocationError, setAlbumLocationError] = createSignal("");
+  const [albumLocationMessage, setAlbumLocationMessage] = createSignal("");
+  const [albumRescanStatus, setAlbumRescanStatus] = createSignal<{
+    scanning: boolean; paused?: boolean; stopped?: boolean; checked: number; added: number; updated: number; missing: number; albums: number; recoveredDatabase: boolean; error?: string;
+  } | null>(null);
+  const [albumRescanError, setAlbumRescanError] = createSignal("");
+  const [albumRescanStarted, setAlbumRescanStarted] = createSignal(false);
+  const [albumRescanHandled, setAlbumRescanHandled] = createSignal(false);
+  const [albumRescanControlBusy, setAlbumRescanControlBusy] = createSignal(false);
+
+  const startAlbumRescan = async () => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath) return;
+    setAlbumRescanError("");
+    setAlbumRescanStarted(true);
+    setAlbumRescanHandled(false);
+    setAlbumRescanStatus({ scanning: true, checked: 0, added: 0, updated: 0, missing: 0, albums: 0, recoveredDatabase: false });
+    try {
+      const result = await rpc.request.startAlbumRescan({ drivePath });
+      if (!result.success) throw new Error(result.error || "Could not start album rescan.");
+    } catch (error: any) {
+      setAlbumRescanError(error.message || "Could not start album rescan.");
+      setAlbumRescanStatus(null);
+      setAlbumRescanStarted(false);
+    }
+  };
+
+  const toggleAlbumRescanPause = async () => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath || !albumRescanStatus()?.scanning) return;
+    const paused = !albumRescanStatus()?.paused;
+    setAlbumRescanControlBusy(true);
+    setAlbumRescanError("");
+    try {
+      const result = await rpc.request.pauseAlbumRescan({ drivePath, paused });
+      if (!result.success) throw new Error(result.error || "Could not change rescan state.");
+      setAlbumRescanStatus(current => current ? { ...current, paused } : current);
+    } catch (error: any) { setAlbumRescanError(error.message || "Could not change rescan state."); }
+    finally { setAlbumRescanControlBusy(false); }
+  };
+
+  const stopAlbumRescan = async () => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath || !albumRescanStatus()?.scanning) return;
+    setAlbumRescanControlBusy(true);
+    setAlbumRescanError("");
+    try {
+      const result = await rpc.request.stopAlbumRescan({ drivePath });
+      if (!result.success) throw new Error(result.error || "Could not stop rescan.");
+      setAlbumRescanStatus(current => current ? { ...current, scanning: false, paused: false, stopped: true } : current);
+    } catch (error: any) { setAlbumRescanError(error.message || "Could not stop rescan."); }
+    finally { setAlbumRescanControlBusy(false); }
+  };
+
+
+  const chooseAlbumFolder = async () => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath) return;
+    setAlbumLocationError("");
+    setAlbumLocationMessage("");
+    try {
+      const picked = await rpc.request.selectFolder({ defaultPath: albumLocation() || drivePath, title: "Choose album folder on this drive" });
+      if (!picked.success || !picked.folderPath) return;
+      setAlbumLocationBusy(true);
+      const result = await rpc.request.setAlbumLocation({ drivePath, folderPath: picked.folderPath });
+      if (!result.success) throw new Error(result.error || "Could not save album folder.");
+      setAlbumLocation(result.absolutePath || picked.folderPath);
+      setAlbumRescanStatus(null);
+      setAlbumRescanStarted(false);
+      setAlbumRescanHandled(false);
+      setAlbumRescanError("");
+      setAlbumLocationMessage("Album folder switched. Existing files and databases were left in place.");
+      await rpc.request.setActiveMediaDrive({ drivePath });
+      await runScaffolding(drivePath);
+    } catch (error: any) {
+      setAlbumLocationError(error.message || "Could not change album folder.");
+    } finally { setAlbumLocationBusy(false); }
+  };
 
   const [scaffolding, setScaffolding] = createSignal(false);
   const [scaffoldResult, setScaffoldResult] = createSignal<{
@@ -136,6 +220,9 @@ function DiscoverComponent() {
         const res = await rpc.request.scaffoldLibrary({ drivePath });
         if (res.success) {
           setScaffoldResult({ success: true });
+          if (drive.selectedDrive?.path === drivePath) {
+            void rpc.request.setActiveMediaDrive({ drivePath }).catch(error => console.error("Could not activate media server:", error));
+          }
           setScaffolding(false);
           return;
         }
@@ -204,6 +291,13 @@ function DiscoverComponent() {
   createEffect(() => {
     const path = drive.selectedDrive?.path;
     if (path) {
+      setAlbumRescanStatus(null);
+      setAlbumRescanStarted(false);
+      setAlbumRescanHandled(false);
+      setAlbumRescanError("");
+      void rpc.request.getAlbumLocation({ drivePath: path }).then(result => {
+        if (drive.selectedDrive?.path === path) setAlbumLocation(result.absolutePath);
+      }).catch(error => setAlbumLocationError(error.message));
       runScaffolding(path);
       setScanPath(path);
       setPage(0);
@@ -211,6 +305,10 @@ function DiscoverComponent() {
       setItemsLoaded(false);
     } else {
       setScaffoldResult(null);
+      setAlbumLocation("");
+      setAlbumRescanStatus(null);
+      setAlbumRescanStarted(false);
+      setAlbumRescanError("");
       setMediaItems([]);
       setTotalItems(0);
       setItemsLoaded(false);
@@ -252,6 +350,28 @@ function DiscoverComponent() {
     }, 1500);
 
     onCleanup(() => clearInterval(interval));
+  });
+
+  createEffect(() => {
+    const drivePath = drive.selectedDrive?.path;
+    if (!drivePath) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const result = await rpc.request.getAlbumRescanStatus({ drivePath });
+        if (!active) return;
+        setAlbumRescanStatus(result);
+        if (result.scanning || result.stopped || result.checked || result.error || result.recoveredDatabase) setAlbumRescanStarted(true);
+        if (result.error) setAlbumRescanError(result.error);
+        if (albumRescanStarted() && !albumRescanHandled() && !result.scanning && !result.error) {
+          setAlbumRescanHandled(true);
+          if (!result.stopped && !scaffoldResult()?.success) void runScaffolding(drivePath);
+        }
+      } catch (error) { if (active) console.error("Could not read album rescan status:", error); }
+    };
+    void refresh();
+    const interval = setInterval(refresh, 1500);
+    onCleanup(() => { active = false; clearInterval(interval); });
   });
 
   // Common Ignorelist Section component for rendering in both views
@@ -348,7 +468,7 @@ function DiscoverComponent() {
         <div class="flex flex-wrap gap-1.5">
           <div class="flex items-center gap-1 px-2 py-1 rounded-md bg-base-300/40 border border-base-300 text-[10px] font-mono text-base-content/40">
             <Shield class="w-3 h-3 text-base-content/30" />
-            <span>albums/</span>
+            <span>{albumLocation() || "albums/"}</span>
           </div>
           <div class="flex items-center gap-1 px-2 py-1 rounded-md bg-base-300/40 border border-base-300 text-[10px] font-mono text-base-content/40">
             <Shield class="w-3 h-3 text-base-content/30" />
@@ -512,6 +632,42 @@ function DiscoverComponent() {
           </div>
         </div>
 
+        <section class="rounded-2xl bg-base-100/40 border border-base-200/80 p-5 sm:p-6 space-y-3" aria-label="Album folder">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="min-w-0">
+              <h3 class="text-sm font-bold text-base-content flex items-center gap-2"><FolderOpen class="w-4 h-4 text-primary" /> Album folder</h3>
+              <p class="text-xs text-base-content/70 mt-1">Albums, thumbnails, and the catalog for this drive are stored here.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+            <button type="button" onClick={startAlbumRescan} disabled={albumRescanStatus()?.scanning || albumLocationBusy() || scanStatus()?.scanning || scaffolding()} class="btn btn-outline btn-sm shrink-0">
+              <Show when={albumRescanStatus()?.scanning && !albumRescanStatus()?.paused} fallback={<RefreshCw class="w-4 h-4" />}><Loader2 class="w-4 h-4 animate-spin" /></Show>
+              {albumRescanStatus()?.paused ? "Rescan paused" : albumRescanStatus()?.scanning ? "Rescanning…" : "Rescan album folder"}
+            </button>
+            <Show when={albumRescanStatus()?.scanning}>
+              <button type="button" onClick={toggleAlbumRescanPause} disabled={albumRescanControlBusy()} class="btn btn-outline btn-sm shrink-0" aria-label={albumRescanStatus()?.paused ? "Resume album rescan" : "Pause album rescan"}>
+                <Show when={albumRescanStatus()?.paused} fallback={<Pause class="w-4 h-4" />}><Play class="w-4 h-4" /></Show>
+                {albumRescanStatus()?.paused ? "Resume" : "Pause"}
+              </button>
+              <button type="button" onClick={stopAlbumRescan} disabled={albumRescanControlBusy()} class="btn btn-outline btn-sm shrink-0" aria-label="Stop album rescan"><Square class="w-4 h-4" /> Stop</button>
+            </Show>
+            <button type="button" onClick={chooseAlbumFolder} disabled={albumLocationBusy() || albumRescanStatus()?.scanning || scanStatus()?.scanning || scaffolding()} class="btn btn-outline btn-sm shrink-0">
+              <Show when={albumLocationBusy()} fallback={<FolderOpen class="w-4 h-4" />}><Loader2 class="w-4 h-4 animate-spin" /></Show>
+              Choose folder
+            </button>
+            </div>
+          </div>
+          <p class="font-mono text-xs text-base-content/80 break-all select-all">{albumLocation() || `${drive.selectedDrive!.path}/albums`}</p>
+          <p class="text-xs text-base-content/60">Rescan repairs the catalog in the selected folder. Choose folder switches the active catalog without moving files or merging databases.</p>
+          <Show when={albumRescanStatus()?.scanning}><p role="status" class="text-xs text-primary">{albumRescanStatus()?.paused ? "Paused after" : "Checking files:"} {albumRescanStatus()?.checked || 0}{albumRescanStatus()?.paused ? " files checked" : ""}</p></Show>
+          <Show when={albumRescanStatus()?.stopped && !albumRescanStatus()?.scanning}><p role="status" class="text-xs text-warning">Rescan stopped. Some checked files may be saved; missing-record cleanup was skipped.</p></Show>
+          <Show when={albumRescanStarted() && albumRescanStatus() && !albumRescanStatus()?.scanning && !albumRescanStatus()?.stopped && !albumRescanError()}>
+            <p role="status" class="text-xs text-success">Rescan complete: {albumRescanStatus()?.added} added, {albumRescanStatus()?.updated} updated, {albumRescanStatus()?.missing} missing records removed, {albumRescanStatus()?.albums} album folders checked{albumRescanStatus()?.recoveredDatabase ? ". Database recovered." : "."}</p>
+          </Show>
+          <Show when={albumRescanError()}><p role="alert" class="text-xs text-error">{albumRescanError()}</p></Show>
+          <Show when={albumLocationError()}><p role="alert" class="text-xs text-error">{albumLocationError()}</p></Show>
+          <Show when={albumLocationMessage()}><p role="status" class="text-xs text-success">{albumLocationMessage()}</p></Show>
+        </section>
+
         {/* Health checks/Scaffolding state */}
         <Show
           when={!scaffolding()}
@@ -611,6 +767,7 @@ function DiscoverComponent() {
                       setScanInitiated(true);
                       startScanning();
                     }}
+                    disabled={albumRescanStatus()?.scanning}
                     class="btn btn-primary px-8 font-bold text-sm tracking-wide shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                   >
                     Discover Drive
@@ -655,7 +812,7 @@ function DiscoverComponent() {
                         </button>
                         <button
                           onClick={startScanning}
-                          disabled={scanStatus()?.scanning}
+                          disabled={scanStatus()?.scanning || albumRescanStatus()?.scanning}
                           class="btn btn-primary btn-sm px-5 font-bold flex items-center gap-1.5"
                         >
                           <Show

@@ -1,3 +1,4 @@
+import { albumDbPath } from "../album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { google } from "googleapis";
@@ -13,7 +14,7 @@ export const backupHandlers: Pick<
 	backupDatabase: async ({ drivePath }) => {
 		addLog("info", `RPC Request: backupDatabase invoked`, `drivePath: ${drivePath}`);
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { success: false, error: "No library database to back up yet." };
 			}
@@ -29,7 +30,7 @@ export const backupHandlers: Pick<
 	},
 	listBackups: async ({ drivePath }) => {
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			const dir = backupDirFor(dbPath);
 			if (!fs.existsSync(dir)) {
 				return { backups: [] };
@@ -74,7 +75,7 @@ export const backupHandlers: Pick<
 	backupToGoogleDrive: async ({ drivePath, serviceAccountJson, folderId }) => {
 		addLog("info", `RPC Request: backupToGoogleDrive invoked`, `drivePath: ${drivePath}`);
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { success: false, error: "No library database found to back up." };
 			}

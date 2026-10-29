@@ -15,6 +15,14 @@ export interface MainRPC extends ElectrobunRPCSchema {
 					path: string;
 				}[];
 			};
+			getAlbumLocation: {
+				params: { drivePath: string };
+				response: { relativePath: string; absolutePath: string };
+			};
+			setAlbumLocation: {
+				params: { drivePath: string; folderPath: string };
+				response: { success: boolean; relativePath?: string; absolutePath?: string; error?: string };
+			};
 			setActiveMediaDrive: {
 				params: { drivePath: string | null };
 				response: { success: boolean; error?: string };
@@ -46,6 +54,22 @@ export interface MainRPC extends ElectrobunRPCSchema {
 			scaffoldLibrary: {
 				params: { drivePath: string };
 				response: { success: boolean; error?: string };
+			};
+			startAlbumRescan: {
+				params: { drivePath: string };
+				response: { success: boolean; error?: string };
+			};
+			pauseAlbumRescan: {
+				params: { drivePath: string; paused: boolean };
+				response: { success: boolean; error?: string };
+			};
+			stopAlbumRescan: {
+				params: { drivePath: string };
+				response: { success: boolean; error?: string };
+			};
+			getAlbumRescanStatus: {
+				params: { drivePath: string };
+				response: { scanning: boolean; paused?: boolean; stopped?: boolean; checked: number; added: number; updated: number; missing: number; albums: number; recoveredDatabase: boolean; error?: string };
 			};
 			startScan: {
 				params: { drivePath: string; folderPath: string; ignoreList?: string[] };

@@ -32,8 +32,9 @@ function replaceAlbumPrefix(value: string, oldPrefix: string, newPrefix: string)
 function applyAlbumEdit(album: Album, edit: EditVariables): Album {
   const name = replaceAlbumPrefix(album.name, edit.oldName, edit.name);
   if (album.id !== edit.albumId && name === album.name) return album;
-  const oldPath = `albums/${edit.oldName}`;
-  const newPath = `albums/${edit.name}`;
+  const rootPrefix = album.relative_path.slice(0, -album.name.length);
+  const oldPath = rootPrefix + edit.oldName;
+  const newPath = rootPrefix + edit.name;
   return {
     ...album,
     name,

@@ -1,3 +1,4 @@
+import { albumDbPath, albumRelativePath, albumRoot } from "../album-location";
 import fs from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
@@ -24,7 +25,7 @@ export const albumHandlers: Pick<
 		addLog("info", `RPC Request: getAlbums invoked`, `drivePath: ${drivePath}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { albums: [] };
 			}
@@ -78,7 +79,7 @@ export const albumHandlers: Pick<
 		addLog("info", `RPC Request: getAlbum invoked`, `albumId: ${albumId}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { error: "Library database not found" };
 			}
@@ -106,7 +107,7 @@ export const albumHandlers: Pick<
 		addLog("info", `RPC Request: getAlbumMedia invoked`, `albumId: ${albumId}, search: ${search}, filter: ${filter}, sortBy: ${sortBy}, sortOrder: ${sortOrder}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				return { items: [], total: 0 };
 			}
@@ -173,7 +174,7 @@ export const albumHandlers: Pick<
 		addLog("info", `RPC Request: createAlbum invoked`, `name: ${name}, description: ${description}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				throw new Error("Library database not found");
 			}
@@ -185,12 +186,12 @@ export const albumHandlers: Pick<
 			db = getDatabaseConnection(dbPath);
 
 			// 1. Check if album with this name already exists
-			const existing = db.prepare("SELECT * FROM albums WHERE name = ? OR relative_path = ?").get(cleanName, `albums/${cleanName}`);
+			const existing = db.prepare("SELECT * FROM albums WHERE name = ? OR relative_path = ?").get(cleanName, `${albumRelativePath(drivePath, cleanName)}`);
 			if (existing) {
 				throw new Error(`An album with the name '${cleanName}' already exists.`);
 			}
 
-			const relativePath = `albums/${cleanName}`;
+			const relativePath = `${albumRelativePath(drivePath, cleanName)}`;
 			const fullDirPath = path.join(drivePath, ...relativePath.split("/"));
 			await fs.promises.mkdir(fullDirPath, { recursive: true });
 			// Insert only after the directory was created successfully.
@@ -223,7 +224,7 @@ export const albumHandlers: Pick<
 		addLog("info", `RPC Request: editAlbum invoked`, `albumId: ${albumId}, newName: ${newName}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				throw new Error("Library database not found");
 			}
@@ -251,15 +252,15 @@ export const albumHandlers: Pick<
 				throw new Error("Cannot move an album inside itself.");
 			}
 
-			const oldDirPath = path.join(drivePath, "albums", album.name);
-			const newDirPath = path.join(drivePath, "albums", cleanName);
+			const oldDirPath = path.join(albumRoot(drivePath), album.name);
+			const newDirPath = path.join(albumRoot(drivePath), cleanName);
 			let movedDirectory = false;
 			let renameJournal: string | null = null;
 			db.run("BEGIN TRANSACTION;");
 			try {
 				if (album.name !== cleanName) {
 					// Check if new name already exists
-					const existing = db.prepare("SELECT * FROM albums WHERE (name = ? OR relative_path = ?) AND id != ?").get(cleanName, `albums/${cleanName}`, albumId);
+					const existing = db.prepare("SELECT * FROM albums WHERE (name = ? OR relative_path = ?) AND id != ?").get(cleanName, `${albumRelativePath(drivePath, cleanName)}`, albumId);
 					if (existing) {
 						throw new Error(`An album with the name '${cleanName}' already exists.`);
 					}
@@ -268,30 +269,30 @@ export const albumHandlers: Pick<
 					if (fs.existsSync(newDirPath)) throw new Error(`A folder named '${cleanName}' already exists on the drive.`);
 					if (fs.existsSync(oldDirPath) && oldDirPath !== newDirPath) {
 						await fs.promises.mkdir(path.dirname(newDirPath), { recursive: true });
-						renameJournal = beginAlbumRename(drivePath, albumId, `albums/${album.name}`, `albums/${cleanName}`);
+						renameJournal = beginAlbumRename(drivePath, albumId, `${albumRelativePath(drivePath, album.name)}`, `${albumRelativePath(drivePath, cleanName)}`);
 						await fs.promises.rename(oldDirPath, newDirPath);
 						movedDirectory = true;
 					}
 
 					// A parent album can contain registered child albums. Move their paths too.
-					const oldPrefix = `albums/${album.name}/`;
+					const oldPrefix = `${albumRelativePath(drivePath, album.name)}/`;
 					// The UNIQUE path indexes let SQLite touch only rows in this folder.
 					// A trailing '/' sorts immediately before '0' in binary order.
 					db.prepare(`UPDATE media_items
 						SET current_relative_path = ? || substr(current_relative_path, ?)
 						WHERE current_relative_path >= ? AND current_relative_path < ?`)
-						.run(`albums/${cleanName}/`, oldPrefix.length + 1, oldPrefix, `${oldPrefix.slice(0, -1)}0`);
+						.run(`${albumRelativePath(drivePath, cleanName)}/`, oldPrefix.length + 1, oldPrefix, `${oldPrefix.slice(0, -1)}0`);
 					const childPrefix = `${album.name}/`;
 					db.prepare(`UPDATE albums
 						SET name = ? || substr(name, ?),
 							relative_path = ? || substr(relative_path, ?)
 						WHERE name >= ? AND name < ?`)
 						.run(`${cleanName}/`, childPrefix.length + 1,
-							`albums/${cleanName}/`, oldPrefix.length + 1,
+							`${albumRelativePath(drivePath, cleanName)}/`, oldPrefix.length + 1,
 							childPrefix, `${childPrefix.slice(0, -1)}0`);
 
 					// Update album details in database
-					const relativePath = `albums/${cleanName}`;
+					const relativePath = `${albumRelativePath(drivePath, cleanName)}`;
 					db.prepare(`
 						UPDATE albums
 						SET name = ?, relative_path = ?, description = ?
@@ -332,7 +333,7 @@ export const albumHandlers: Pick<
 		addLog("info", `RPC Request: deleteAlbum invoked`, `albumId: ${albumId}`);
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) {
 				throw new Error("Library database not found");
 			}
@@ -354,8 +355,8 @@ export const albumHandlers: Pick<
 			if (permanent) {
 				const root = path.resolve(drivePath);
 				const realRoot = fs.realpathSync(root);
-				const albumDir = path.resolve(root, "albums", album.name);
-				if (!albumDir.startsWith(path.join(root, "albums") + path.sep)) {
+				const albumDir = path.resolve(albumRoot(root), album.name);
+				if (!albumDir.startsWith(albumRoot(root) + path.sep)) {
 					throw new Error("Invalid album path.");
 				}
 				const batchDir = newDeletionBatch(drivePath);
@@ -398,7 +399,7 @@ export const albumHandlers: Pick<
 				catch (cleanupErr: any) { addLog("warn", `Could not clear staged album files: ${cleanupErr.message}`, batchDir); }
 				try {
 					const stillUsesHash = db.prepare("SELECT 1 FROM media_items WHERE file_hash = ? LIMIT 1");
-					const thumbsDir = fs.realpathSync(path.join(root, "albums", "thumbs"));
+					const thumbsDir = fs.realpathSync(path.join(albumRoot(root), "thumbs"));
 					if (thumbsDir.startsWith(realRoot + path.sep)) {
 						for (const hash of hashes) {
 							if (stillUsesHash.get(hash)) continue;
@@ -424,7 +425,7 @@ export const albumHandlers: Pick<
 			// 3. Find or create the fallback 'unknown' album
 			let fallbackAlbum = db.prepare("SELECT * FROM albums WHERE name = 'unknown'").get() as { id: number; name: string } | undefined;
 			if (!fallbackAlbum) {
-				const relativePath = "albums/unknown";
+				const relativePath = albumRelativePath(drivePath, "unknown");
 				const insertRes = db.prepare(`
 					INSERT INTO albums (name, relative_path, description)
 					VALUES ('unknown', ?, 'Unsorted media items')
@@ -432,11 +433,11 @@ export const albumHandlers: Pick<
 				fallbackAlbum = { id: insertRes.lastInsertRowid as number, name: "unknown" };
 			}
 
-			const fallbackDir = path.join(drivePath, "albums", "unknown");
+			const fallbackDir = path.join(albumRoot(drivePath), "unknown");
 			await fs.promises.mkdir(fallbackDir, { recursive: true });
 
 			const movedFiles = new MoveBatch(drivePath);
-			const targetDir = path.join(drivePath, "albums", album.name);
+			const targetDir = path.join(albumRoot(drivePath), album.name);
 			db.run("BEGIN TRANSACTION;");
 			try {
 				// 4. Move all media files back to 'unknown'
@@ -502,7 +503,7 @@ export const albumHandlers: Pick<
 				ids.some(id => !Number.isSafeInteger(id) || id === targetAlbumId) || new Set(ids).size !== ids.length) {
 				throw new Error("Choose distinct source albums and one different destination album.");
 			}
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) throw new Error("Library database not found");
 			assertWritable(drivePath);
 			db = getDatabaseConnection(dbPath);
@@ -514,7 +515,7 @@ export const albumHandlers: Pick<
 			if (sources.some(source => source!.name === "unknown")) throw new Error("The Unsorted Media album cannot be merged into another album.");
 
 			const root = path.resolve(drivePath);
-			const albumsRoot = path.join(root, "albums");
+			const albumsRoot = albumRoot(root);
 			const safePath = (relative: string) => {
 				const resolved = path.resolve(root, relative);
 				if (!resolved.startsWith(root + path.sep)) throw new Error(`Invalid media path: ${relative}`);
@@ -584,7 +585,7 @@ export const albumHandlers: Pick<
 	validateAlbumFiles: async ({ drivePath, albumId }) => {
 		let db: Database | null = null;
 		try {
-			const dbPath = path.join(drivePath, "albums", ".media_library.db");
+			const dbPath = albumDbPath(drivePath);
 			if (!fs.existsSync(dbPath)) throw new Error("Library database not found");
 			assertWritable(drivePath);
 			db = getDatabaseConnection(dbPath);
@@ -599,6 +600,14 @@ export const albumHandlers: Pick<
 			const remove = db.prepare("DELETE FROM media_items WHERE id = ?");
 			const removeMissing = db.transaction((ids: number[]) => {
 				for (const id of ids) remove.run(id);
+				// Repair stored counts even when the files are present but a previous
+				// interruption left media_count out of sync with media_items.
+				if (albumId === undefined) {
+					db!.run("UPDATE albums SET media_count = (SELECT count(*) FROM media_items WHERE album_id = albums.id)");
+				} else {
+					db!.prepare("UPDATE albums SET media_count = (SELECT count(*) FROM media_items WHERE album_id = ?) WHERE id = ?")
+						.run(albumId, albumId);
+				}
 			});
 			removeMissing(missing);
 			return { success: true, checked: rows.length, removed: missing.length };

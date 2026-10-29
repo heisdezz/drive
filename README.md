@@ -27,6 +27,38 @@ bun run dev
 
 For frontend hot reload, use `bun run dev:hmr`.
 
+## Album folder per drive
+
+On **Discover**, select a drive and use **Choose folder** to switch the active
+album folder and its `.media_library.db`. The dashboard shows the current folder
+and links back to this control. Switching keeps both folders, their media, and
+their databases in place. It does not merge catalogs or move files. If the
+selected folder has no database, scaffolding looks for a valid snapshot in its
+`.backups/` directory, then for a database or backup at the drive root, before
+creating a new catalog. Scanning must be idle and Mobile Sync stopped for that
+drive.
+
+The path is saved in `.dstream-album-location.json` at the drive root so another
+installation can find the library. A drive-to-folder cache is also saved on this
+computer in `album-locations.json` under the app config directory (on Linux,
+`~/.config/io.github.heisdezz.dstream/`, or under `$XDG_CONFIG_HOME` if set).
+Drives without either setting use `albums/` at their root.
+
+## Repair an album catalog
+
+On **Discover**, select a drive and click **Rescan album folder**. The rescan
+checks existing album files without moving them, adds missing catalog entries,
+updates changed file details and album links, removes records for files that no
+longer exist, and rebuilds album counts and search data. If the database is
+unreadable, the app keeps a copy in the album folder's `.backups/` directory,
+then restores a valid snapshot if available before rebuilding from the files.
+The result shows how many files were checked, added, updated, or removed from
+the catalog. Folders named `thumbs` are skipped at every level, and existing
+thumbnail entries are removed from the catalog during a completed rescan.
+Use **Pause** and **Resume** to suspend or continue a running rescan. **Stop**
+ends it without running missing-record cleanup; any completed batches remain
+in the catalog.
+
 ## Mobile LAN API
 
 In Settings, select a scanned drive and start **Local Network Mobile Sync**.

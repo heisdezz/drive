@@ -23,7 +23,12 @@ import { createMutation } from "@tanstack/solid-query";
 import { useSelectionStore } from "@/store/selection_store";
 import { useMediaCatalog } from "@/hooks/useMediaCatalog";
 import DialogModal, { type ModalHandle } from "@/components/DialogModal";
-import { validateMediaSearch, patchSearch, patchPagedSearch, type MediaSearch } from "@/lib/catalogSearch";
+import {
+  validateMediaSearch,
+  patchSearch,
+  patchPagedSearch,
+  type MediaSearch,
+} from "@/lib/catalogSearch";
 
 export const Route = createFileRoute("/medias/")({
   component: MediasComponent,
@@ -132,25 +137,31 @@ function MediasComponent() {
 
   const setSearchQuery = (newSearch: string) => {
     navigate({
-      search: (prev: MediaSearch) => patchPagedSearch(prev, { search: newSearch }),
+      search: (prev: MediaSearch) =>
+        patchPagedSearch(prev, { search: newSearch }),
     });
   };
 
   const setFilterType = (newFilter: "all" | "images" | "videos") => {
     navigate({
-      search: (prev: MediaSearch) => patchPagedSearch(prev, { filter: newFilter }),
+      search: (prev: MediaSearch) =>
+        patchPagedSearch(prev, { filter: newFilter }),
     });
   };
 
   const setSortBy = (newSortBy: "date" | "name" | "size") => {
     navigate({
-      search: (prev: MediaSearch) => patchPagedSearch(prev, { sortBy: newSortBy }),
+      search: (prev: MediaSearch) =>
+        patchPagedSearch(prev, { sortBy: newSortBy }),
     });
   };
 
   const toggleSortOrder = () => {
     navigate({
-      search: (prev: MediaSearch) => patchPagedSearch(prev, { sortOrder: prev.sortOrder === "asc" ? "desc" : "asc" }),
+      search: (prev: MediaSearch) =>
+        patchPagedSearch(prev, {
+          sortOrder: prev.sortOrder === "asc" ? "desc" : "asc",
+        }),
     });
   };
 

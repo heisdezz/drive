@@ -183,7 +183,7 @@ export default function Sidebar() {
             <Zap class="w-3.5 h-3.5 text-primary-content fill-primary-content" />
           </div>
           <span class="font-extrabold text-sm tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-secondary">
-            Antigravity Drive
+            D-Stream
           </span>
         </div>
       </div>

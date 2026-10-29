@@ -35,6 +35,8 @@ const router = createRouter({
   context: {
     queryClient,
   },
+  defaultViewTransition: true,
+  scrollRestoration: true,
 });
 
 // Register the router instance for type safety
